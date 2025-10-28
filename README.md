@@ -194,9 +194,28 @@ spotify-vinyl-api/
    - Albums con tracks populares tienen prioridad
 4. **Generación de Recomendaciones:** Selecciona los 20 mejores vinilos basándose en el score
 
+## Deployment
+
+See [DEPLOY.md](./DEPLOY.md) for detailed deployment instructions on Render.
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | API information and available endpoints |
+| GET | `/auth/login` | Get Spotify authorization URL |
+| GET | `/callback` | OAuth callback (Spotify redirect) |
+| GET | `/api/analysis` | Get listening analysis data |
+| GET | `/api/vinyl-recommendations?timeRange=medium_term` | Get vinyl recommendations |
+
+### Query Parameters
+
+- `timeRange`: `short_term` (1 month), `medium_term` (6 months), or `long_term` (all time)
+
 ## Próximas Mejoras
 
-- Integración con Discogs API para precios de vinilos
+- ✅ Integración con Discogs API para precios de vinilos
+- ✅ Soporte para diferentes rangos de tiempo
 - Persistencia de datos en base de datos
 - Filtros por género, época, precio
 - Sistema de favoritos
@@ -208,7 +227,12 @@ spotify-vinyl-api/
 - Para producción, implementar almacenamiento persistente (Redis, PostgreSQL, etc.)
 - Los tokens de Spotify expiran después de 1 hora
 - Implementar refresh token automático para sesiones largas
+- CORS está configurado para permitir solo dominios autorizados
 
 ## Licencia
 
 MIT
+
+## Related
+
+- [Frontend UI](https://github.com/nicocontreras123/spotify-vinyl-ui)
