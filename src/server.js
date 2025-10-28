@@ -11,25 +11,48 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // CORS Configuration
+const isDevelopment = process.env.NODE_ENV !== 'production';
+
+// Parse allowed origins
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
   : ['http://localhost:5173', 'http://127.0.0.1:5173'];
 
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+console.log('🌐 CORS Configuration:');
+console.log('  - Environment:', process.env.NODE_ENV || 'development');
+console.log('  - Allowed Origins:', allowedOrigins);
 
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+// In development, allow all origins. In production, use allowed origins list.
+const corsOptions = isDevelopment
+  ? {
+      origin: true, // Allow all origins in development
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization']
     }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-};
+  : {
+      origin: function (origin, callback) {
+        console.log('🔍 CORS check for origin:', origin);
+
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) {
+          console.log('✅ No origin header - allowing request');
+          return callback(null, true);
+        }
+
+        if (allowedOrigins.includes(origin)) {
+          console.log('✅ Origin allowed:', origin);
+          callback(null, true);
+        } else {
+          console.log('❌ CORS blocked origin:', origin);
+          console.log('   Allowed origins:', allowedOrigins);
+          callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
+        }
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization']
+    };
 
 // Middleware
 app.use(cors(corsOptions));
