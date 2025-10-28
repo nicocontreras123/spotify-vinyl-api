@@ -66,17 +66,20 @@ app.get('/', (req, res) => {
     endpoints: {
       authentication: {
         login: 'GET /auth/login - Get Spotify authorization URL',
-        callback: 'GET /callback - Spotify OAuth callback'
+        callback: 'GET /callback - Spotify OAuth callback',
+        logout: 'POST /auth/logout - Logout and clear tokens'
       },
       data: {
         analysis: 'GET /api/analysis - Get your listening analysis',
-        recommendations: 'GET /api/vinyl-recommendations - Get vinyl recommendations'
+        recommendations: 'GET /api/vinyl-recommendations - Get vinyl recommendations',
+        albumDetails: 'GET /api/album/:id - Get detailed information about a specific album'
       }
     },
     instructions: [
       '1. Visit /auth/login to get the Spotify authorization URL',
       '2. Authorize the application in your browser',
-      '3. After authorization, visit /api/vinyl-recommendations to get your personalized vinyl recommendations'
+      '3. After authorization, visit /api/vinyl-recommendations to get your personalized vinyl recommendations',
+      '4. Use /api/album/{album_id} to get detailed information about any album'
     ]
   });
 });

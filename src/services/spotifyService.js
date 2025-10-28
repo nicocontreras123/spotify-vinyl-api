@@ -37,6 +37,53 @@ export const getArtistTopAlbums = async (artistId, limit = 5) => {
   }
 };
 
+export const getAlbumDetails = async (albumId) => {
+  try {
+    const [albumData, tracksData] = await Promise.all([
+      spotifyApi.getAlbum(albumId),
+      spotifyApi.getAlbumTracks(albumId, { limit: 50 })
+    ]);
+
+    const album = albumData.body;
+    const tracks = tracksData.body.items;
+
+    return {
+      id: album.id,
+      name: album.name,
+      artists: album.artists.map(artist => ({
+        id: artist.id,
+        name: artist.name,
+        uri: artist.uri
+      })),
+      releaseDate: album.release_date,
+      totalTracks: album.total_tracks,
+      images: album.images,
+      genres: album.genres,
+      popularity: album.popularity,
+      uri: album.uri,
+      externalUrls: album.external_urls,
+      label: album.label,
+      copyrights: album.copyrights,
+      tracks: tracks.map(track => ({
+        id: track.id,
+        name: track.name,
+        trackNumber: track.track_number,
+        durationMs: track.duration_ms,
+        explicit: track.explicit,
+        uri: track.uri,
+        previewUrl: track.preview_url,
+        artists: track.artists.map(artist => ({
+          id: artist.id,
+          name: artist.name,
+          uri: artist.uri
+        }))
+      }))
+    };
+  } catch (error) {
+    throw new Error(`Error fetching album details: ${error.message}`);
+  }
+};
+
 export const getAnalysisData = async (timeRange = 'medium_term') => {
   try {
     const [topTracks, topArtists] = await Promise.all([
