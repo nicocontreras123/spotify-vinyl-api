@@ -43,5 +43,19 @@ export const callback = async (req, res) => {
   }
 };
 
+export const logout = (req, res) => {
+  // Clear tokens
+  accessToken = null;
+  refreshToken = null;
+
+  // Reset spotify API tokens
+  spotifyApi.resetAccessToken();
+  spotifyApi.resetRefreshToken();
+
+  res.json({
+    message: 'Logged out successfully'
+  });
+};
+
 export const getAccessToken = () => accessToken;
 export const isAuthenticated = () => !!accessToken;
