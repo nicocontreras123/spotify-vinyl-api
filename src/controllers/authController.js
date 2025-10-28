@@ -27,16 +27,19 @@ export const callback = async (req, res) => {
     spotifyApi.setAccessToken(accessToken);
     spotifyApi.setRefreshToken(refreshToken);
 
-    res.json({
-      message: 'Authentication successful!',
-      expiresIn: data.body['expires_in']
-    });
+    // Get frontend URL from environment or use default
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+    // Redirect to frontend with tokens in hash fragment (client-side only)
+    const redirectUrl = `${frontendUrl}/#access_token=${accessToken}&refresh_token=${refreshToken}&expires_in=${data.body['expires_in']}`;
+
+    res.redirect(redirectUrl);
   } catch (error) {
     console.error('Error during authentication:', error);
-    res.status(500).json({
-      error: 'Authentication failed',
-      details: error.message
-    });
+
+    // Redirect to frontend with error
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/#error=authentication_failed&message=${encodeURIComponent(error.message)}`);
   }
 };
 
