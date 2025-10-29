@@ -51,6 +51,7 @@ export const generateVinylRecommendations = async (analysisData) => {
 
   sortedAlbums.forEach(album => {
     recommendations.push({
+      albumId: album.id,
       albumName: album.name,
       artist: album.artist,
       releaseDate: album.releaseDate,
@@ -74,6 +75,7 @@ export const generateVinylRecommendations = async (analysisData) => {
       if (albums && albums.length > 0) {
         const album = albums[0];
         return {
+          albumId: album.id,
           albumName: album.name,
           artist: artist.name,
           releaseDate: album.release_date,
@@ -85,15 +87,8 @@ export const generateVinylRecommendations = async (analysisData) => {
       }
     } catch (error) {
       console.log(`Could not fetch albums for ${artist.name}`);
-      // Fallback to artist image
-      return {
-        albumName: `Popular Album by ${artist.name}`,
-        artist: artist.name,
-        coverImage: artist.images[0]?.url,
-        reason: `You listen to ${artist.name} frequently`,
-        priority: 'medium',
-        note: 'Search for this artist\'s most acclaimed albums on vinyl'
-      };
+      // Skip recommendation if we can't get a valid album ID
+      return null;
     }
   });
 

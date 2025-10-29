@@ -37,6 +37,30 @@ export const getArtistTopAlbums = async (artistId, limit = 5) => {
   }
 };
 
+/**
+ * Get related/similar artists from Spotify
+ */
+export const getRelatedArtists = async (artistId) => {
+  try {
+    const data = await spotifyApi.getArtistRelatedArtists(artistId);
+    return data.body.artists;
+  } catch (error) {
+    throw new Error(`Error fetching related artists: ${error.message}`);
+  }
+};
+
+/**
+ * Get artist details
+ */
+export const getArtist = async (artistId) => {
+  try {
+    const data = await spotifyApi.getArtist(artistId);
+    return data.body;
+  } catch (error) {
+    throw new Error(`Error fetching artist: ${error.message}`);
+  }
+};
+
 export const getAlbumDetails = async (albumId) => {
   try {
     const [albumData, tracksData] = await Promise.all([
@@ -67,7 +91,7 @@ export const getAlbumDetails = async (albumId) => {
       tracks: tracks.map(track => ({
         id: track.id,
         name: track.name,
-        trackNumber: track.track_number,
+        track_number: track.track_number,
         durationMs: track.duration_ms,
         explicit: track.explicit,
         uri: track.uri,

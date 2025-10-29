@@ -1,15 +1,8 @@
 import { getAnalysisData, getAlbumDetails } from '../services/spotifyService.js';
 import { generateVinylRecommendations, generateMusicTasteSummary } from '../services/vinylRecommendationService.js';
-import { isAuthenticated } from './authController.js';
+import { generateDiscoveryRecommendations, generateDiscoverySummary } from '../services/discoveryService.js';
 
 export const getUserAnalysis = async (req, res) => {
-  if (!isAuthenticated()) {
-    return res.status(401).json({
-      error: 'Not authenticated',
-      message: 'Please authenticate with Spotify first by visiting /auth/login'
-    });
-  }
-
   try {
     const analysisData = await getAnalysisData();
     res.json({
@@ -26,13 +19,6 @@ export const getUserAnalysis = async (req, res) => {
 };
 
 export const getVinylRecommendations = async (req, res) => {
-  if (!isAuthenticated()) {
-    return res.status(401).json({
-      error: 'Not authenticated',
-      message: 'Please authenticate with Spotify first by visiting /auth/login'
-    });
-  }
-
   try {
     const timeRange = req.query.timeRange || 'medium_term';
     const analysisData = await getAnalysisData(timeRange);
@@ -56,13 +42,6 @@ export const getVinylRecommendations = async (req, res) => {
 };
 
 export const getAlbumDetailsController = async (req, res) => {
-  if (!isAuthenticated()) {
-    return res.status(401).json({
-      error: 'Not authenticated',
-      message: 'Please authenticate with Spotify first by visiting /auth/login'
-    });
-  }
-
   try {
     const { id } = req.params;
 
@@ -92,6 +71,35 @@ export const getAlbumDetailsController = async (req, res) => {
 
     res.status(500).json({
       error: 'Failed to fetch album details',
+      details: error.message
+    });
+  }
+};
+
+/**
+ * Get discovery recommendations - new artists similar to user's taste
+ */
+export const getDiscoveryRecommendations = async (req, res) => {
+  try {
+    const timeRange = req.query.timeRange || 'medium_term';
+
+    console.log('🎯 Generating discovery recommendations...');
+    const analysisData = await getAnalysisData(timeRange);
+    const recommendations = await generateDiscoveryRecommendations(analysisData);
+    const summary = generateDiscoverySummary(recommendations);
+
+    res.json({
+      success: true,
+      summary: summary,
+      recommendations: recommendations,
+      totalRecommendations: recommendations.length,
+      timeRange: timeRange,
+      message: 'Discover new artists similar to your favorite music'
+    });
+  } catch (error) {
+    console.error('Error generating discovery recommendations:', error);
+    res.status(500).json({
+      error: 'Failed to generate discovery recommendations',
       details: error.message
     });
   }
