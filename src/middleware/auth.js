@@ -1,7 +1,9 @@
 import { spotifyApi } from '../config/spotify.js';
+import { ensureValidToken } from '../controllers/authController.js';
 
 /**
  * Middleware to authenticate requests using Bearer token from Authorization header
+ * También se encarga de renovar el token si ha expirado
  */
 export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -26,6 +28,15 @@ export const authenticateToken = async (req, res, next) => {
     // Set the access token for this request
     spotifyApi.setAccessToken(token);
     console.log('  - Token set in spotifyApi successfully');
+
+    // Intentar renovar el token si es necesario (usando el stored refresh token)
+    try {
+      await ensureValidToken();
+      console.log('  - Token validado y renovado si fue necesario');
+    } catch (refreshError) {
+      console.warn('  - No se pudo auto-renovar el token (continuando con el token actual):', refreshError.message);
+      // Continuar con el token actual - si está realmente expirado, la siguiente petición fallará
+    }
 
     // Get user ID for caching
     try {

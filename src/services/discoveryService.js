@@ -1,12 +1,17 @@
 import { getRelatedArtists, getArtistTopAlbums } from './spotifyService.js';
+import { getSimilarArtistsFromLastfm, getArtistTopAlbumsFromLastfm } from './lastfmService.js';
 import * as cacheService from './cacheService.js';
 
 // Cache TTL for discovery data: 12 hours (43200 seconds)
 const DISCOVERY_CACHE_TTL = 12 * 60 * 60;
 
+// Use Last.fm as primary source for similar artists (Spotify recommendations deprecated)
+const USE_LASTFM = true;
+
 /**
  * Generates vinyl recommendations from similar artists that the user doesn't already listen to
  * This helps users discover new music in their preferred genres
+ * Uses Last.fm API for finding similar artists since Spotify recommendations are deprecated
  */
 export const generateDiscoveryRecommendations = async (analysisData) => {
   const cacheKey = cacheService.generateKey('discovery_recommendations', 'discovery');
@@ -24,111 +29,65 @@ export const generateDiscoveryRecommendations = async (analysisData) => {
   const userArtistNames = new Set(topArtists.map(artist => artist.name.toLowerCase()));
 
   const discoveryMap = new Map();
-  const artistSimilarityScore = new Map();
 
-  // Use top 10 artists as seeds for discovery
-  const seedArtists = topArtists.slice(0, 10);
+  let similarArtists = [];
 
-  console.log(`🔍 Finding similar artists based on ${seedArtists.length} seed artists...`);
-
-  // For each seed artist, find related artists
-  for (const seedArtist of seedArtists) {
+  // Use Last.fm for finding similar artists (better support after Spotify deprecated recommendations)
+  if (USE_LASTFM) {
     try {
-      console.log(`  Fetching related artists for: ${seedArtist.name}`);
-      const relatedArtists = await getRelatedArtists(seedArtist.id);
-      console.log(`  Found ${relatedArtists.length} related artists`);
-
-      for (const relatedArtist of relatedArtists) {
-        // Skip if user already listens to this artist
-        if (userArtistIds.has(relatedArtist.id) ||
-            userArtistNames.has(relatedArtist.name.toLowerCase())) {
-          continue;
-        }
-
-        // Skip if already processed
-        if (discoveryMap.has(relatedArtist.id)) {
-          // Increment similarity score if found from multiple seed artists
-          const existing = discoveryMap.get(relatedArtist.id);
-          existing.similarToArtists.push(seedArtist.name);
-          existing.relevanceScore += 1;
-          continue;
-        }
-
-        // Check genre overlap
-        const genreOverlap = (relatedArtist.genres && seedArtist.genres)
-          ? relatedArtist.genres.filter(genre =>
-              seedArtist.genres.some(userGenre =>
-                userGenre.includes(genre) || genre.includes(userGenre)
-              )
-            ).length
-          : 0;
-
-        // Calculate relevance score
-        const relevanceScore = 1 + genreOverlap * 0.5;
-
-        discoveryMap.set(relatedArtist.id, {
-          id: relatedArtist.id,
-          name: relatedArtist.name,
-          genres: relatedArtist.genres,
-          images: relatedArtist.images,
-          popularity: relatedArtist.popularity,
-          similarToArtists: [seedArtist.name],
-          relevanceScore: relevanceScore,
-          genreOverlap: genreOverlap
-        });
-      }
+      console.log(`🎵 Using Last.fm to find similar artists...`);
+      similarArtists = await getSimilarArtistsFromLastfm(topArtists);
     } catch (error) {
-      console.error(`Error fetching related artists for ${seedArtist.name}:`, error.message);
+      console.error('Error fetching from Last.fm, falling back to Spotify:', error.message);
+      // Fallback to Spotify if Last.fm fails
+      similarArtists = await getDiscoveryFromSpotify(topArtists, userArtistIds, userArtistNames);
     }
+  } else {
+    // Fallback: use Spotify's related artists
+    similarArtists = await getDiscoveryFromSpotify(topArtists, userArtistIds, userArtistNames);
   }
 
-  console.log(`✅ Found ${discoveryMap.size} new artists to explore`);
-
-  // Sort by relevance and popularity
-  const sortedArtists = Array.from(discoveryMap.values())
-    .sort((a, b) => {
-      // Primary sort by relevance score (how many connections)
-      if (b.relevanceScore !== a.relevanceScore) {
-        return b.relevanceScore - a.relevanceScore;
-      }
-      // Secondary sort by popularity
-      return b.popularity - a.popularity;
-    })
-    .slice(0, 15); // Top 15 new artists
-
-  console.log(`🎯 Selected top ${sortedArtists.length} artists for album recommendations`);
-
-  // Get top albums for each discovered artist
+  // Map Last.fm results to our discovery structure
   const recommendations = [];
 
-  for (const artist of sortedArtists) {
+  for (const artist of similarArtists) {
     try {
       console.log(`  Fetching albums for: ${artist.name}`);
-      const albums = await getArtistTopAlbums(artist.id, 2); // Get 2 best albums per artist
+      
+      // Try to get albums from Spotify first, fallback to Last.fm
+      let albums = [];
+      try {
+        // Try to find the artist in Spotify for better data
+        const spotifyArtists = await spotifySearch(`artist:${artist.name}`, 'artist');
+        if (spotifyArtists && spotifyArtists.length > 0) {
+          albums = await getArtistTopAlbums(spotifyArtists[0].id, 2);
+        }
+      } catch (error) {
+        console.log(`Could not fetch from Spotify, trying Last.fm for ${artist.name}`);
+        // Fallback to Last.fm
+        albums = await getArtistTopAlbumsFromLastfm(artist.name, 2);
+      }
+
       console.log(`  Found ${albums?.length || 0} albums`);
 
       if (albums && albums.length > 0) {
         for (const album of albums) {
-          // Build explanation of why this is recommended
-          const similarArtistsText = artist.similarToArtists.length > 1
-            ? `${artist.similarToArtists[0]} and ${artist.similarToArtists.length - 1} other artists you listen to`
-            : artist.similarToArtists[0];
-
           recommendations.push({
-            albumId: album.id,
+            albumId: album.id || null,
             albumName: album.name,
             artist: artist.name,
-            artistId: artist.id,
-            releaseDate: album.release_date,
-            coverImage: album.images[0]?.url || artist.images[0]?.url,
-            spotifyUri: album.uri,
-            reason: `Similar to ${similarArtistsText}`,
-            genres: artist.genres.slice(0, 3),
-            popularity: artist.popularity,
-            relevanceScore: artist.relevanceScore,
-            similarToArtists: artist.similarToArtists,
-            discovery: true, // Flag to indicate this is a discovery recommendation
-            type: 'discovery'
+            artistId: artist.id || null,
+            releaseDate: album.release_date || null,
+            coverImage: album.images?.[0]?.url || album.image || artist.image || null,
+            spotifyUri: album.uri || null,
+            reason: `Similar to ${artist.similarToArtists.join(', ')}`,
+            genres: artist.tags || [],
+            popularity: Math.round((artist.similarity || 0) * 100),
+            relevanceScore: artist.relevanceScore || 0,
+            similarToArtists: artist.similarToArtists || [],
+            discovery: true,
+            type: 'discovery',
+            source: 'lastfm'
           });
         }
       }
@@ -149,6 +108,64 @@ export const generateDiscoveryRecommendations = async (analysisData) => {
   // Cache the recommendations
   cacheService.set(cacheKey, rankedRecommendations, DISCOVERY_CACHE_TTL);
   return rankedRecommendations;
+};
+
+/**
+ * Fallback: Get discovery recommendations using Spotify's related artists
+ */
+const getDiscoveryFromSpotify = async (topArtists, userArtistIds, userArtistNames) => {
+  const discoveryMap = new Map();
+  const seedArtists = topArtists.slice(0, 10);
+
+  console.log(`🔍 Fallback: Finding similar artists based on ${seedArtists.length} seed artists from Spotify...`);
+
+  for (const seedArtist of seedArtists) {
+    try {
+      console.log(`  Fetching related artists for: ${seedArtist.name}`);
+      const relatedArtists = await getRelatedArtists(seedArtist.id);
+
+      for (const relatedArtist of relatedArtists) {
+        if (userArtistIds.has(relatedArtist.id) || userArtistNames.has(relatedArtist.name.toLowerCase())) {
+          continue;
+        }
+
+        if (discoveryMap.has(relatedArtist.id)) {
+          const existing = discoveryMap.get(relatedArtist.id);
+          existing.similarToArtists.push(seedArtist.name);
+          existing.relevanceScore += 1;
+          continue;
+        }
+
+        const genreOverlap = (relatedArtist.genres && seedArtist.genres)
+          ? relatedArtist.genres.filter(genre =>
+              seedArtist.genres.some(userGenre =>
+                userGenre.includes(genre) || genre.includes(userGenre)
+              )
+            ).length
+          : 0;
+
+        const relevanceScore = 1 + genreOverlap * 0.5;
+
+        discoveryMap.set(relatedArtist.id, {
+          id: relatedArtist.id,
+          name: relatedArtist.name,
+          genres: relatedArtist.genres,
+          images: relatedArtist.images,
+          popularity: relatedArtist.popularity,
+          similarToArtists: [seedArtist.name],
+          relevanceScore: relevanceScore,
+          genreOverlap: genreOverlap,
+          similarity: relatedArtist.popularity / 100
+        });
+      }
+    } catch (error) {
+      console.error(`Error fetching related artists for ${seedArtist.name}:`, error.message);
+    }
+  }
+
+  return Array.from(discoveryMap.values())
+    .sort((a, b) => b.relevanceScore - a.relevanceScore)
+    .slice(0, 15);
 };
 
 /**
