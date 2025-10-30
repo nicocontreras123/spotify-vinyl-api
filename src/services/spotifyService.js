@@ -184,6 +184,10 @@ export const getAlbumDetails = async (albumId) => {
       popularity: album.popularity,
       uri: album.uri,
       externalUrls: album.external_urls,
+      // Add direct Spotify links for playback
+      spotifyWebUrl: album.external_urls?.spotify || null,
+      spotifyAppUrl: `spotify:album:${album.id}`, // URI that opens in Spotify app and plays the album
+      playLink: album.external_urls?.spotify || null,
       label: album.label,
       copyrights: album.copyrights,
       tracks: tracks.map(track => ({
@@ -194,6 +198,8 @@ export const getAlbumDetails = async (albumId) => {
         explicit: track.explicit,
         uri: track.uri,
         previewUrl: track.preview_url,
+        spotifyWebUrl: track.external_urls?.spotify || null,
+        spotifyAppUrl: `spotify:track:${track.id}`,
         artists: track.artists.map(artist => ({
           id: artist.id,
           name: artist.name,
