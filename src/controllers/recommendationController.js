@@ -1,6 +1,7 @@
 import { getAnalysisData, getAlbumDetails } from '../services/spotifyService.js';
 import { generateVinylRecommendations, generateMusicTasteSummary } from '../services/vinylRecommendationService.js';
 import { generateDiscoveryRecommendations, generateDiscoverySummary } from '../services/discoveryService.js';
+import * as cache from '../services/cacheService.js';
 
 export const getUserAnalysis = async (req, res) => {
   try {
@@ -21,17 +22,45 @@ export const getUserAnalysis = async (req, res) => {
 export const getVinylRecommendations = async (req, res) => {
   try {
     const timeRange = req.query.timeRange || 'medium_term';
+    const userId = req.userId;
+
+    // Try to get from cache if userId is available
+    if (userId) {
+      const cacheKey = cache.generateKey(userId, timeRange, 'vinyl');
+      const cachedData = cache.get(cacheKey);
+
+      if (cachedData) {
+        console.log('✨ Returning cached vinyl recommendations');
+        return res.json({
+          ...cachedData,
+          cached: true,
+          cacheHit: true
+        });
+      }
+    }
+
+    // Cache miss or no userId - generate fresh recommendations
+    console.log('🔄 Generating fresh vinyl recommendations');
     const analysisData = await getAnalysisData(timeRange);
     const recommendations = await generateVinylRecommendations(analysisData);
     const musicTasteSummary = generateMusicTasteSummary(analysisData);
 
-    res.json({
+    const responseData = {
       success: true,
       summary: musicTasteSummary,
       vinylRecommendations: recommendations,
       totalRecommendations: recommendations.length,
-      timeRange: timeRange
-    });
+      timeRange: timeRange,
+      cached: false
+    };
+
+    // Cache the result if userId is available
+    if (userId) {
+      const cacheKey = cache.generateKey(userId, timeRange, 'vinyl');
+      cache.set(cacheKey, responseData);
+    }
+
+    res.json(responseData);
   } catch (error) {
     console.error('Error generating recommendations:', error);
     res.status(500).json({

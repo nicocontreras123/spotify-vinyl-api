@@ -3,9 +3,17 @@ import { spotifyApi } from '../config/spotify.js';
 /**
  * Middleware to authenticate requests using Bearer token from Authorization header
  */
-export const authenticateToken = (req, res, next) => {
+export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Format: "Bearer TOKEN"
+
+  console.log('🔐 Auth Middleware:');
+  console.log('  - Auth header present:', !!authHeader);
+  console.log('  - Token present:', !!token);
+  if (token) {
+    console.log('  - Token length:', token.length);
+    console.log('  - Token preview:', token.substring(0, 20) + '...');
+  }
 
   if (!token) {
     return res.status(401).json({
@@ -17,8 +25,21 @@ export const authenticateToken = (req, res, next) => {
   try {
     // Set the access token for this request
     spotifyApi.setAccessToken(token);
+    console.log('  - Token set in spotifyApi successfully');
+
+    // Get user ID for caching
+    try {
+      const userData = await spotifyApi.getMe();
+      req.userId = userData.body.id;
+      console.log('  - User ID:', req.userId);
+    } catch (userError) {
+      console.warn('  - Could not fetch user ID (will continue without caching):', userError.message);
+      // Continue without userId - caching will be disabled for this request
+    }
+
     next();
   } catch (error) {
+    console.error('  - Error setting token:', error);
     return res.status(401).json({
       error: 'Invalid token',
       message: 'The provided access token is invalid or expired.'

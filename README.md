@@ -23,6 +23,17 @@ API que analiza tu historial de escucha en Spotify y recomienda 20 vinilos para 
 3. Obtén tu `Client ID` y `Client Secret`
 4. Agrega `http://127.0.0.1:3000/callback` a las URIs de redirección en la configuración de tu app
 
+### ⚠️ IMPORTANTE: Gestión de Usuarios
+
+**Por defecto, las aplicaciones de Spotify están en "Development Mode"** y solo funcionan con usuarios que agregues manualmente (máximo 25).
+
+Si ves **Error 403 Forbidden** al autenticarte con una cuenta diferente:
+
+- **Para desarrollo:** [Agrega usuarios manualmente](./ADD_USERS_DEV.md)
+- **Para producción:** [Solicita modo producción](./SPOTIFY_PRODUCTION.md) (cualquier usuario podrá usarla)
+
+📖 **Guía completa:** [USER_ACCESS_GUIDE.md](./USER_ACCESS_GUIDE.md)
+
 ## Instalación
 
 1. Clona el repositorio o navega al directorio del proyecto
@@ -228,6 +239,25 @@ See [DEPLOY.md](./DEPLOY.md) for detailed deployment instructions on Render.
 - Los tokens de Spotify expiran después de 1 hora
 - Implementar refresh token automático para sesiones largas
 - CORS está configurado para permitir solo dominios autorizados
+
+## 🐛 Troubleshooting
+
+### Error 403 Forbidden
+**Problema:** Usuario no puede autenticarse
+**Causa:** La aplicación está en Development Mode y el usuario no está en la lista
+**Solución:** [Agregar usuario manualmente](./ADD_USERS_DEV.md) o [solicitar modo producción](./SPOTIFY_PRODUCTION.md)
+
+### Error 401 Unauthorized
+**Problema:** Token expirado
+**Causa:** Los tokens de Spotify expiran cada 1 hora
+**Solución:** Hacer logout y volver a autenticarse
+
+### "Invalid redirect URI"
+**Problema:** Error en la autenticación de Spotify
+**Causa:** El redirect URI en el código no coincide con el del Dashboard
+**Solución:** Verificar que coincidan exactamente en el Dashboard y en tu `.env`
+
+📖 **Ver más:** [USER_ACCESS_GUIDE.md](./USER_ACCESS_GUIDE.md)
 
 ## Licencia
 

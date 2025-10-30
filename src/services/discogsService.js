@@ -1,11 +1,15 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
+import * as cacheService from './cacheService.js';
 
 dotenv.config();
 
 const DISCOGS_API_URL = 'https://api.discogs.com';
 const USER_AGENT = 'SpotifyVinylRecommender/1.0';
 const DISCOGS_TOKEN = process.env.DISCOGS_TOKEN || null;
+
+// Cache TTL for Discogs data: 48 hours (172800 seconds) - data changes less frequently
+const DISCOGS_CACHE_TTL = 48 * 60 * 60;
 
 // Tasa de conversión aproximada USD a CLP (actualizar periódicamente)
 // Idealmente esto debería venir de una API de tipos de cambio
@@ -64,6 +68,14 @@ export const searchVinylPrice = async (artist, album) => {
   }
 
   try {
+    const cacheKey = cacheService.generateKey(`vinyl_price:${artist}:${album}`, 'discogs');
+    
+    // Try to get from cache
+    const cachedData = cacheService.get(cacheKey);
+    if (cachedData) {
+      return cachedData;
+    }
+
     const searchQuery = `${artist} ${album}`;
     const response = await makeRateLimitedRequest(`${DISCOGS_API_URL}/database/search`, {
       q: searchQuery,
@@ -78,7 +90,7 @@ export const searchVinylPrice = async (artist, album) => {
       // Intentar obtener precio del marketplace
       const priceInfo = await getMarketplacePrice(release.id);
 
-      return {
+      const result = {
         found: true,
         discogsId: release.id,
         title: release.title,
@@ -86,13 +98,19 @@ export const searchVinylPrice = async (artist, album) => {
         thumb: release.thumb,
         ...priceInfo
       };
+      
+      cacheService.set(cacheKey, result, DISCOGS_CACHE_TTL);
+      return result;
     }
 
-    return {
+    const result = {
       found: false,
       priceUSD: null,
       priceCLP: null
     };
+    
+    cacheService.set(cacheKey, result, DISCOGS_CACHE_TTL);
+    return result;
   } catch (error) {
     console.error('Error searching Discogs:', error.message);
     return {
@@ -154,10 +172,21 @@ const getMarketplacePrice = async (releaseId) => {
  */
 export const getExchangeRate = async () => {
   try {
+    const cacheKey = cacheService.generateKey('exchange_rate:usd_clp', 'discogs');
+    
+    // Try to get from cache
+    const cachedData = cacheService.get(cacheKey);
+    if (cachedData) {
+      return cachedData;
+    }
+
     // Usar una API gratuita de tipos de cambio
     const response = await axios.get('https://api.exchangerate-api.com/v4/latest/USD');
     if (response.data && response.data.rates && response.data.rates.CLP) {
-      return response.data.rates.CLP;
+      const rate = response.data.rates.CLP;
+      // Cache exchange rate for 12 hours
+      cacheService.set(cacheKey, rate, 12 * 60 * 60);
+      return rate;
     }
     return USD_TO_CLP; // Fallback
   } catch (error) {

@@ -1,11 +1,26 @@
 import { getArtistTopAlbums } from './spotifyService.js';
 import { searchVinylPrice } from './discogsService.js';
+import * as cacheService from './cacheService.js';
+
+// Cache TTL for vinyl recommendations: 12 hours (43200 seconds)
+const VINYL_CACHE_TTL = 12 * 60 * 60;
 
 /**
  * Analyzes user's Spotify listening data and recommends vinyl records to purchase
+ * Note: Singles (albums with only 1 track) are filtered out as they rarely have vinyl versions
  */
 export const generateVinylRecommendations = async (analysisData) => {
+  const cacheKey = cacheService.generateKey('vinyl_recommendations', 'vinyl');
+  
+  // Try to get from cache
+  const cachedData = cacheService.get(cacheKey);
+  if (cachedData) {
+    return cachedData;
+  }
+
   const { topTracks, topArtists, topAlbums } = analysisData;
+
+  console.log(`🎵 Generating vinyl recommendations from ${topAlbums.length} albums and ${topArtists.length} artists`);
 
   const recommendations = [];
   const addedAlbumIds = new Set();
@@ -95,8 +110,12 @@ export const generateVinylRecommendations = async (analysisData) => {
   const topArtistRecommendations = await Promise.all(artistAlbumsPromises);
   recommendations.push(...topArtistRecommendations.filter(Boolean));
 
+  console.log(`✅ Total recommendations before limit: ${recommendations.length}`);
+
   // 3. Ensure we have exactly 20 recommendations
   const finalRecommendations = recommendations.slice(0, 20);
+
+  console.log(`📀 Final vinyl recommendations: ${finalRecommendations.length}`);
 
   // Add ranking
   const recommendationsWithRank = finalRecommendations.map((rec, index) => ({
@@ -126,6 +145,8 @@ export const generateVinylRecommendations = async (analysisData) => {
     }
   }
 
+  // Cache the recommendations
+  cacheService.set(cacheKey, [...recommendationsWithPrices, ...remaining], VINYL_CACHE_TTL);
   return [...recommendationsWithPrices, ...remaining];
 };
 
@@ -133,6 +154,14 @@ export const generateVinylRecommendations = async (analysisData) => {
  * Generates a summary of the user's music taste
  */
 export const generateMusicTasteSummary = (analysisData) => {
+  const cacheKey = cacheService.generateKey('music_taste_summary', 'vinyl');
+  
+  // Try to get from cache
+  const cachedData = cacheService.get(cacheKey);
+  if (cachedData) {
+    return cachedData;
+  }
+
   const { topArtists } = analysisData;
 
   // Extract all genres
@@ -149,7 +178,7 @@ export const generateMusicTasteSummary = (analysisData) => {
     .slice(0, 5)
     .map(([genre, count]) => ({ genre, count }));
 
-  return {
+  const result = {
     topGenres,
     topArtistNames: topArtists.slice(0, 10).map(a => a.name),
     musicProfile: {
@@ -158,4 +187,8 @@ export const generateMusicTasteSummary = (analysisData) => {
       totalArtistsAnalyzed: topArtists.length
     }
   };
+  
+  // Cache the summary
+  cacheService.set(cacheKey, result, VINYL_CACHE_TTL);
+  return result;
 };

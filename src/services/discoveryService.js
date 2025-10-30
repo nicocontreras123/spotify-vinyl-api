@@ -1,10 +1,22 @@
 import { getRelatedArtists, getArtistTopAlbums } from './spotifyService.js';
+import * as cacheService from './cacheService.js';
+
+// Cache TTL for discovery data: 12 hours (43200 seconds)
+const DISCOVERY_CACHE_TTL = 12 * 60 * 60;
 
 /**
  * Generates vinyl recommendations from similar artists that the user doesn't already listen to
  * This helps users discover new music in their preferred genres
  */
 export const generateDiscoveryRecommendations = async (analysisData) => {
+  const cacheKey = cacheService.generateKey('discovery_recommendations', 'discovery');
+  
+  // Try to get from cache
+  const cachedData = cacheService.get(cacheKey);
+  if (cachedData) {
+    return cachedData;
+  }
+
   const { topArtists } = analysisData;
 
   // Get IDs of artists the user already listens to
@@ -134,6 +146,8 @@ export const generateDiscoveryRecommendations = async (analysisData) => {
     vinylSearchTip: `Search "${rec.artist} ${rec.albumName}" to discover new music similar to your favorites`
   }));
 
+  // Cache the recommendations
+  cacheService.set(cacheKey, rankedRecommendations, DISCOVERY_CACHE_TTL);
   return rankedRecommendations;
 };
 
@@ -141,6 +155,14 @@ export const generateDiscoveryRecommendations = async (analysisData) => {
  * Generates a summary of discovery recommendations
  */
 export const generateDiscoverySummary = (recommendations) => {
+  const cacheKey = cacheService.generateKey('discovery_summary', 'discovery');
+  
+  // Try to get from cache
+  const cachedData = cacheService.get(cacheKey);
+  if (cachedData) {
+    return cachedData;
+  }
+
   // Extract unique genres from recommendations
   const genreCount = {};
   recommendations.forEach(rec => {
@@ -160,7 +182,7 @@ export const generateDiscoverySummary = (recommendations) => {
   // Get unique new artists
   const uniqueArtists = [...new Set(recommendations.map(r => r.artist))];
 
-  return {
+  const result = {
     totalNewArtists: uniqueArtists.length,
     totalAlbums: recommendations.length,
     topGenres: topGenres,
@@ -168,4 +190,8 @@ export const generateDiscoverySummary = (recommendations) => {
       recommendations.reduce((sum, r) => sum + (r.popularity || 0), 0) / recommendations.length
     )
   };
+  
+  // Cache the summary
+  cacheService.set(cacheKey, result, DISCOVERY_CACHE_TTL);
+  return result;
 };
