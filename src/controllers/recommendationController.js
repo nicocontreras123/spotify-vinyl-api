@@ -12,8 +12,17 @@ export const getUserAnalysis = async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting user analysis:', error);
+
+    // If it's an authentication error, return 401/403
+    if (error.statusCode === 401 || error.statusCode === 403) {
+      return res.status(error.statusCode).json({
+        error: 'Error de autenticación',
+        details: error.message
+      });
+    }
+
     res.status(500).json({
-      error: 'Failed to fetch user data',
+      error: 'Error al obtener datos del usuario',
       details: error.message
     });
   }
@@ -63,8 +72,17 @@ export const getVinylRecommendations = async (req, res) => {
     res.json(responseData);
   } catch (error) {
     console.error('Error generating recommendations:', error);
+
+    // If it's an authentication error, return 401/403
+    if (error.statusCode === 401 || error.statusCode === 403) {
+      return res.status(error.statusCode).json({
+        error: 'Error de autenticación',
+        details: error.message
+      });
+    }
+
     res.status(500).json({
-      error: 'Failed to generate vinyl recommendations',
+      error: 'Error al generar recomendaciones de vinilos',
       details: error.message
     });
   }
@@ -76,8 +94,8 @@ export const getAlbumDetailsController = async (req, res) => {
 
     if (!id) {
       return res.status(400).json({
-        error: 'Bad request',
-        message: 'Album ID is required'
+        error: 'Solicitud incorrecta',
+        message: 'Se requiere el ID del álbum'
       });
     }
 
@@ -93,13 +111,13 @@ export const getAlbumDetailsController = async (req, res) => {
     // Handle specific Spotify API errors
     if (error.message.includes('invalid id')) {
       return res.status(404).json({
-        error: 'Album not found',
-        message: 'The specified album ID does not exist'
+        error: 'Álbum no encontrado',
+        message: 'El ID de álbum especificado no existe'
       });
     }
 
     res.status(500).json({
-      error: 'Failed to fetch album details',
+      error: 'Error al obtener detalles del álbum',
       details: error.message
     });
   }
@@ -123,12 +141,21 @@ export const getDiscoveryRecommendations = async (req, res) => {
       recommendations: recommendations,
       totalRecommendations: recommendations.length,
       timeRange: timeRange,
-      message: 'Discover new artists similar to your favorite music'
+      message: 'Descubre discos basados en tus gustos musicales'
     });
   } catch (error) {
     console.error('Error generating discovery recommendations:', error);
+
+    // If it's an authentication error, return 401/403
+    if (error.statusCode === 401 || error.statusCode === 403) {
+      return res.status(error.statusCode).json({
+        error: 'Error de autenticación',
+        details: error.message
+      });
+    }
+
     res.status(500).json({
-      error: 'Failed to generate discovery recommendations',
+      error: 'Error al generar recomendaciones de descubrimiento',
       details: error.message
     });
   }

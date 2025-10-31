@@ -25,13 +25,17 @@ export const getUserTopTracks = async (timeRange = 'medium_term', limit = 50) =>
   } catch (error) {
     console.error('Error fetching top tracks:', error);
 
-    // Handle 403 Forbidden errors specifically
-    if (error.statusCode === 403) {
-      throw new Error('Access token expired or insufficient permissions. Please log out and log in again.');
+    // Handle 401/403 authentication errors specifically
+    if (error.statusCode === 401 || error.statusCode === 403) {
+      const authError = new Error('El token de acceso ha expirado o tiene permisos insuficientes.');
+      authError.statusCode = error.statusCode; // Preserve status code
+      throw authError;
     }
 
-    const errorMessage = error.body?.error?.message || error.message || `Status ${error.statusCode || 'unknown'}`;
-    throw new Error(`Error fetching top tracks: ${errorMessage}`);
+    const errorMessage = error.body?.error?.message || error.message || `Estado ${error.statusCode || 'desconocido'}`;
+    const err = new Error(`Error al obtener las canciones más escuchadas: ${errorMessage}`);
+    err.statusCode = error.statusCode; // Preserve status code
+    throw err;
   }
 };
 
@@ -56,13 +60,17 @@ export const getUserTopArtists = async (timeRange = 'medium_term', limit = 50) =
   } catch (error) {
     console.error('Error fetching top artists:', error);
 
-    // Handle 403 Forbidden errors specifically
-    if (error.statusCode === 403) {
-      throw new Error('Access token expired or insufficient permissions. Please log out and log in again.');
+    // Handle 401/403 authentication errors specifically
+    if (error.statusCode === 401 || error.statusCode === 403) {
+      const authError = new Error('El token de acceso ha expirado o tiene permisos insuficientes.');
+      authError.statusCode = error.statusCode; // Preserve status code
+      throw authError;
     }
 
-    const errorMessage = error.body?.error?.message || error.message || `Status ${error.statusCode || 'unknown'}`;
-    throw new Error(`Error fetching top artists: ${errorMessage}`);
+    const errorMessage = error.body?.error?.message || error.message || `Estado ${error.statusCode || 'desconocido'}`;
+    const err = new Error(`Error al obtener los artistas más escuchados: ${errorMessage}`);
+    err.statusCode = error.statusCode; // Preserve status code
+    throw err;
   }
 };
 
@@ -99,7 +107,7 @@ export const getArtistTopAlbums = async (artistId, limit = 5) => {
   } catch (error) {
     console.error('Error fetching artist albums:', error);
     const errorMessage = error.body?.error?.message || error.message || JSON.stringify(error);
-    throw new Error(`Error fetching artist albums: ${errorMessage}`);
+    throw new Error(`Error al obtener los álbumes del artista: ${errorMessage}`);
   }
 };
 
@@ -123,7 +131,7 @@ export const getRelatedArtists = async (artistId) => {
   } catch (error) {
     console.error('Error fetching related artists:', error);
     const errorMessage = error.body?.error?.message || error.message || JSON.stringify(error);
-    throw new Error(`Error fetching related artists: ${errorMessage}`);
+    throw new Error(`Error al obtener artistas relacionados: ${errorMessage}`);
   }
 };
 
@@ -147,7 +155,7 @@ export const getArtist = async (artistId) => {
   } catch (error) {
     console.error('Error fetching artist:', error);
     const errorMessage = error.body?.error?.message || error.message || JSON.stringify(error);
-    throw new Error(`Error fetching artist: ${errorMessage}`);
+    throw new Error(`Error al obtener información del artista: ${errorMessage}`);
   }
 };
 
@@ -213,7 +221,7 @@ export const getAlbumDetails = async (albumId) => {
   } catch (error) {
     console.error('Error fetching album details:', error);
     const errorMessage = error.body?.error?.message || error.message || JSON.stringify(error);
-    throw new Error(`Error fetching album details: ${errorMessage}`);
+    throw new Error(`Error al obtener detalles del álbum: ${errorMessage}`);
   }
 };
 
@@ -273,7 +281,16 @@ export const getAnalysisData = async (timeRange = 'medium_term') => {
     return result;
   } catch (error) {
     console.error('Error fetching analysis data:', error);
+
+    // Preserve statusCode if it exists (for authentication errors)
+    if (error.statusCode === 401 || error.statusCode === 403) {
+      // Re-throw the error as-is to preserve authentication error details
+      throw error;
+    }
+
     const errorMessage = error.body?.error?.message || error.message || JSON.stringify(error);
-    throw new Error(`Error fetching analysis data: ${errorMessage}`);
+    const err = new Error(`Error al obtener datos de análisis: ${errorMessage}`);
+    err.statusCode = error.statusCode; // Preserve status code
+    throw err;
   }
 };

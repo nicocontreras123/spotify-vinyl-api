@@ -132,10 +132,10 @@ export const getSimilarArtistsFromLastfm = async (seedArtists) => {
     }
   }
 
-  // Sort by relevance and return top results
+  // Sort by relevance and return top results (reduced to 12 for performance)
   const similarArtists = Array.from(similarArtistsMap.values())
     .sort((a, b) => b.relevanceScore - a.relevanceScore)
-    .slice(0, 20);
+    .slice(0, 12);
 
   console.log(`✅ Found ${similarArtists.length} similar artists from Last.fm`);
 
@@ -151,7 +151,7 @@ export const getSimilarArtistsFromLastfm = async (seedArtists) => {
  */
 export const getArtistTopAlbumsFromLastfm = async (artistName, limit = 5) => {
   const cacheKey = cacheService.generateKey(`artist_albums_lastfm:${artistName}:${limit}`, 'lastfm');
-  
+
   // Try to get from cache
   const cachedData = cacheService.get(cacheKey);
   if (cachedData) {
@@ -162,7 +162,7 @@ export const getArtistTopAlbumsFromLastfm = async (artistName, limit = 5) => {
     const data = await makeLastfmRequest({
       method: 'artist.getTopAlbums',
       artist: artistName,
-      limit: limit * 2 // Get more to filter singles
+      limit: limit * 3 // Get more to filter singles and other unwanted albums
     });
 
     if (data.topalbums?.album) {
@@ -170,24 +170,68 @@ export const getArtistTopAlbumsFromLastfm = async (artistName, limit = 5) => {
         ? data.topalbums.album
         : [data.topalbums.album];
 
-      const result = albums
-        .filter(album => {
-          // Filter out compilations and live albums if possible
-          const name = album.name.toLowerCase();
-          return !name.includes('compilation') && !name.includes('live');
-        })
-        .slice(0, limit)
-        .map(album => ({
-          name: album.name,
-          artist: artistName,
-          playcount: parseInt(album.playcount) || 0,
-          url: album.url || null,
-          image: album.image?.[album.image.length - 1]?.['#text'] || null,
-          mbid: album.mbid || null
-        }));
+      // First filter: compilations and live albums
+      const filteredByName = albums.filter(album => {
+        const name = album.name.toLowerCase();
+        return !name.includes('compilation') && !name.includes('live');
+      });
 
-      cacheService.set(cacheKey, result, LASTFM_CACHE_TTL);
-      return result;
+      // Second filter: get album details to check track count (in parallel for speed)
+      const albumsWithDetails = [];
+
+      // OPTIMIZATION: Fetch album details in parallel instead of sequentially
+      const albumDetailPromises = filteredByName.slice(0, limit * 2).map(async (album) => {
+        try {
+          // Get detailed album info to check track count
+          const albumInfo = await makeLastfmRequest({
+            method: 'album.getInfo',
+            artist: artistName,
+            album: album.name
+          });
+
+          if (albumInfo.album) {
+            const trackCount = Array.isArray(albumInfo.album.tracks?.track)
+              ? albumInfo.album.tracks.track.length
+              : (albumInfo.album.tracks?.track ? 1 : 0);
+
+            // Filter out singles (albums with only 1 track)
+            if (trackCount >= 2) {
+              return {
+                name: album.name,
+                artist: artistName,
+                playcount: parseInt(album.playcount) || 0,
+                url: album.url || null,
+                image: album.image?.[album.image.length - 1]?.['#text'] || null,
+                mbid: album.mbid || null,
+                trackCount: trackCount
+              };
+            } else {
+              console.log(`  ⏭️  Skipping single: ${album.name} (${trackCount} track)`);
+              return null;
+            }
+          }
+          return null;
+        } catch (error) {
+          // If we can't get album details, skip it to be safe
+          console.error(`Error fetching details for album ${album.name}:`, error.message);
+          return null;
+        }
+      });
+
+      // Wait for all album detail fetches to complete
+      const albumDetailResults = await Promise.allSettled(albumDetailPromises);
+
+      // Collect successful results
+      albumDetailResults.forEach(result => {
+        if (result.status === 'fulfilled' && result.value && albumsWithDetails.length < limit) {
+          albumsWithDetails.push(result.value);
+        }
+      });
+
+      console.log(`📀 Last.fm albums for ${artistName}: ${albums.length} total, ${albumsWithDetails.length} after filtering singles`);
+
+      cacheService.set(cacheKey, albumsWithDetails, LASTFM_CACHE_TTL);
+      return albumsWithDetails;
     }
 
     return [];

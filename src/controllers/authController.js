@@ -12,7 +12,7 @@ export const ensureValidToken = async () => {
   try {
     // Si no hay token, no hay nada que renovar
     if (!accessToken || !refreshToken) {
-      throw new Error('No tokens available. User needs to authenticate.');
+      throw new Error('No hay tokens disponibles. El usuario necesita autenticarse.');
     }
 
     // Verificar si el token ha expirado (con 5 min de margen)
@@ -37,14 +37,14 @@ export const ensureValidToken = async () => {
     return accessToken;
   } catch (error) {
     console.error('❌ Error renovando token:', error.message);
-    throw new Error('Failed to refresh token. Please log in again.');
+    throw new Error('Error al renovar el token. Por favor, inicia sesión nuevamente.');
   }
 };
 
 export const login = (req, res) => {
   const authorizeURL = spotifyApi.createAuthorizeURL(scopes, 'state');
   res.json({
-    message: 'Please authorize the application',
+    message: 'Por favor autoriza la aplicación',
     authUrl: authorizeURL
   });
 };
@@ -53,7 +53,7 @@ export const callback = async (req, res) => {
   const { code } = req.query;
 
   if (!code) {
-    return res.status(400).json({ error: 'Authorization code missing' });
+    return res.status(400).json({ error: 'Falta el código de autorización' });
   }
 
   try {
@@ -97,7 +97,7 @@ export const logout = (req, res) => {
   spotifyApi.resetRefreshToken();
 
   res.json({
-    message: 'Logged out successfully'
+    message: 'Sesión cerrada exitosamente'
   });
 };
 

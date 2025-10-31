@@ -4,8 +4,19 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import recommendationRoutes from './routes/recommendationRoutes.js';
 import { callback } from './controllers/authController.js';
+import { initializeDatabase } from './config/database.js';
 
 dotenv.config();
+
+// Initialize database
+(async () => {
+  try {
+    await initializeDatabase();
+  } catch (error) {
+    console.error('❌ Failed to initialize database:', error);
+    console.log('⚠️  API will continue but database features will not work');
+  }
+})();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -87,7 +98,10 @@ app.get('/', (req, res) => {
 // Callback route at root level to match Spotify configuration
 app.get('/callback', callback);
 
+// Spotify OAuth routes
 app.use('/auth', authRoutes);
+
+// API routes
 app.use('/api', recommendationRoutes);
 
 // Error handling middleware
