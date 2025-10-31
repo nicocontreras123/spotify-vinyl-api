@@ -11,11 +11,11 @@ import {
 /**
  * Mark album as owned
  * POST /api/user/vinyls/owned
- * Body: { albumId, albumName, artist }
+ * Body: { albumId, albumName, artist, coverImage }
  */
 export const addOwnedAlbum = async (req, res) => {
   try {
-    const { albumId, albumName, artist } = req.body;
+    const { albumId, albumName, artist, coverImage } = req.body;
     const userId = req.user.userId;
 
     if (!albumId || !albumName || !artist) {
@@ -25,7 +25,7 @@ export const addOwnedAlbum = async (req, res) => {
       });
     }
 
-    const result = await markAlbumAsOwned(userId, albumId, albumName, artist);
+    const result = await markAlbumAsOwned(userId, albumId, albumName, artist, coverImage);
 
     if (result.alreadyMarked) {
       return res.json({
@@ -77,11 +77,11 @@ export const removeOwnedAlbum = async (req, res) => {
 /**
  * Mark album as favorite
  * POST /api/user/vinyls/favorite
- * Body: { albumId, albumName, artist }
+ * Body: { albumId, albumName, artist, coverImage }
  */
 export const addFavoriteAlbum = async (req, res) => {
   try {
-    const { albumId, albumName, artist } = req.body;
+    const { albumId, albumName, artist, coverImage } = req.body;
     const userId = req.user.userId;
 
     if (!albumId || !albumName || !artist) {
@@ -91,7 +91,7 @@ export const addFavoriteAlbum = async (req, res) => {
       });
     }
 
-    const result = await markAlbumAsFavorite(userId, albumId, albumName, artist);
+    const result = await markAlbumAsFavorite(userId, albumId, albumName, artist, coverImage);
 
     if (result.alreadyMarked) {
       return res.json({

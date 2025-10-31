@@ -1,6 +1,7 @@
 import { getRelatedArtists, getArtistTopAlbums } from './spotifyService.js';
 import { getSimilarArtistsFromLastfm, getArtistTopAlbumsFromLastfm } from './lastfmService.js';
 import * as cacheService from './cacheService.js';
+import { getUserAlbumStatus } from './userVinylService.js';
 
 // Cache TTL for discovery data: 12 hours (43200 seconds)
 const DISCOVERY_CACHE_TTL = 12 * 60 * 60;
@@ -12,20 +13,31 @@ const USE_LASTFM = true;
  * Generates album/disc recommendations based on user's listening preferences
  * Returns 30 albums sorted by similarity to what the user currently listens to
  * Includes albums from both artists the user knows and similar new artists
+ * @param {Object} analysisData - User's Spotify listening data
+ * @param {number|null} userId - Optional user ID for personalized filtering (owned/favorites)
+ * NOTE: Caching is now handled in the controller, not here
  */
-export const generateDiscoveryRecommendations = async (analysisData) => {
-  const cacheKey = cacheService.generateKey('discovery_recommendations', 'discovery');
-
-  // Try to get from cache
-  const cachedData = cacheService.get(cacheKey);
-  if (cachedData) {
-    return cachedData;
-  }
-
+export const generateDiscoveryRecommendations = async (analysisData, userId = null) => {
   const { topArtists, topAlbums } = analysisData;
 
   // Get albums the user already has in their top albums to avoid duplicates
   const userAlbumNames = new Set(topAlbums.map(album => album.name.toLowerCase()));
+
+  // Get user's owned and favorite albums if logged in
+  let ownedAlbums = new Set();
+  let favoriteAlbums = new Set();
+
+  if (userId) {
+    try {
+      const userAlbumStatus = await getUserAlbumStatus(userId);
+      ownedAlbums = userAlbumStatus.owned;
+      favoriteAlbums = userAlbumStatus.favorites;
+      console.log(`👤 User has ${ownedAlbums.size} owned albums and ${favoriteAlbums.size} favorites for discovery`);
+    } catch (error) {
+      console.error('Error getting user album status for discovery:', error);
+      // Continue without filtering if error
+    }
+  }
 
   const albumRecommendations = [];
 
@@ -92,6 +104,12 @@ export const generateDiscoveryRecommendations = async (analysisData) => {
       // Process albums and return recommendations for this artist
       return albums
         .filter(album => {
+          // Skip if user already owns this album
+          if (album.id && ownedAlbums.has(album.id)) {
+            console.log(`  ⏭️  Skipping owned album: ${artist.name} - ${album.name}`);
+            return false;
+          }
+
           // Skip if already in user's top albums
           if (userAlbumNames.has(album.name.toLowerCase())) {
             console.log(`  ⏭️  Skipping already listened album: ${album.name}`);
@@ -105,7 +123,12 @@ export const generateDiscoveryRecommendations = async (analysisData) => {
           const similarityBonus = (artist.similarity || 0) * 5;
           const popularityBonus = (album.total_tracks || 10) / 100;
 
-          const albumRelevanceScore = baseScore + similarityBonus + popularityBonus;
+          let albumRelevanceScore = baseScore + similarityBonus + popularityBonus;
+
+          // BONUS: If album is in user's favorites, give significant boost
+          if (album.id && favoriteAlbums.has(album.id)) {
+            albumRelevanceScore += 1000; // High priority for favorites
+          }
 
           return {
             albumId: album.id || null,
@@ -163,8 +186,6 @@ export const generateDiscoveryRecommendations = async (analysisData) => {
     vinylSearchTip: `Busca "${rec.artist} - ${rec.albumName}" en vinilo`
   }));
 
-  // Cache the recommendations
-  cacheService.set(cacheKey, rankedRecommendations, DISCOVERY_CACHE_TTL);
   return rankedRecommendations;
 };
 
@@ -228,16 +249,9 @@ const getDiscoveryFromSpotify = async (topArtists, userArtistIds, userArtistName
 
 /**
  * Generates a summary of album/disc discovery recommendations
+ * NOTE: Caching is now handled in the controller, not here
  */
 export const generateDiscoverySummary = (recommendations) => {
-  const cacheKey = cacheService.generateKey('discovery_summary', 'discovery');
-
-  // Try to get from cache
-  const cachedData = cacheService.get(cacheKey);
-  if (cachedData) {
-    return cachedData;
-  }
-
   // Extract unique genres from recommendations
   const genreCount = {};
   recommendations.forEach(rec => {
@@ -272,7 +286,5 @@ export const generateDiscoverySummary = (recommendations) => {
     )
   };
 
-  // Cache the summary
-  cacheService.set(cacheKey, result, DISCOVERY_CACHE_TTL);
   return result;
 };

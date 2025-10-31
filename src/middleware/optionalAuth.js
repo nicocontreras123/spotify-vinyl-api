@@ -5,10 +5,12 @@ import { verifyToken } from '../services/authService.js';
  * Verifies JWT token if present, but allows request to continue without it
  * Sets req.user if token is valid
  * This allows the app to work without login, but unlocks features for logged users
+ *
+ * NOTE: Reads token from X-User-Token header (not Authorization) to avoid conflicts with Spotify token
  */
 export const optionalAuth = async (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Format: "Bearer TOKEN"
+  // Check for user JWT in custom header (X-User-Token)
+  const token = req.headers['x-user-token'];
 
   if (!token) {
     // No token provided - continue without user authentication
@@ -40,10 +42,11 @@ export const optionalAuth = async (req, res, next) => {
  * Required authentication middleware
  * Requires valid JWT token - returns 401 if not authenticated
  * Use this for endpoints that MUST have user authentication
+ *
+ * NOTE: Reads token from X-User-Token header (not Authorization) to avoid conflicts with Spotify token
  */
 export const requireAuth = async (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = req.headers['x-user-token'];
 
   if (!token) {
     return res.status(401).json({

@@ -1,4 +1,5 @@
 import { spotifyApi, scopes } from '../config/spotify.js';
+import * as cache from '../services/cacheService.js';
 
 // Store tokens temporarily (in production, use a database or session management)
 let accessToken = null;

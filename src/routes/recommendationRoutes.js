@@ -1,13 +1,17 @@
 import express from 'express';
 import { getUserAnalysis, getVinylRecommendations, getAlbumDetailsController, getDiscoveryRecommendations } from '../controllers/recommendationController.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { optionalAuth } from '../middleware/optionalAuth.js';
 
 const router = express.Router();
 
-// All routes require authentication
+// Spotify authentication routes (require Spotify token)
 router.get('/analysis', authenticateToken, getUserAnalysis);
-router.get('/vinyl-recommendations', authenticateToken, getVinylRecommendations);
-router.get('/discovery-recommendations', authenticateToken, getDiscoveryRecommendations);
 router.get('/album/:id', authenticateToken, getAlbumDetailsController);
+
+// Recommendation routes (work with or without user login, but require Spotify token)
+// optionalAuth checks for JWT user token, authenticateToken requires Spotify token
+router.get('/vinyl-recommendations', authenticateToken, optionalAuth, getVinylRecommendations);
+router.get('/discovery-recommendations', authenticateToken, optionalAuth, getDiscoveryRecommendations);
 
 export default router;

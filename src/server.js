@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import recommendationRoutes from './routes/recommendationRoutes.js';
+import userAuthRoutes from './routes/userAuthRoutes.js';
+import userVinylRoutes from './routes/userVinylRoutes.js';
 import { callback } from './controllers/authController.js';
 import { initializeDatabase } from './config/database.js';
 
@@ -39,7 +41,7 @@ const corsOptions = isDevelopment
       origin: true, // Allow all origins in development
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization']
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Token']
     }
   : {
       origin: function (origin, callback) {
@@ -62,7 +64,7 @@ const corsOptions = isDevelopment
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization']
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Token']
     };
 
 // Middleware
@@ -75,22 +77,38 @@ app.get('/', (req, res) => {
     message: 'Spotify Vinyl Recommendation API',
     version: '1.0.0',
     endpoints: {
-      authentication: {
+      spotifyAuth: {
         login: 'GET /auth/login - Get Spotify authorization URL',
         callback: 'GET /callback - Spotify OAuth callback',
-        logout: 'POST /auth/logout - Logout and clear tokens'
+        logout: 'POST /auth/logout - Logout and clear Spotify tokens'
       },
-      data: {
+      userAuth: {
+        register: 'POST /api/auth/register - Register with email/password',
+        login: 'POST /api/auth/login - Login with email/password',
+        me: 'GET /api/auth/me - Get current user info'
+      },
+      recommendations: {
         analysis: 'GET /api/analysis - Get your listening analysis',
-        recommendations: 'GET /api/vinyl-recommendations - Get vinyl recommendations',
+        vinyl: 'GET /api/vinyl-recommendations - Get vinyl recommendations',
+        discovery: 'GET /api/discovery-recommendations - Discover new albums',
         albumDetails: 'GET /api/album/:id - Get detailed information about a specific album'
+      },
+      userVinyls: {
+        addOwned: 'POST /api/user/vinyls/owned - Mark album as owned',
+        removeOwned: 'DELETE /api/user/vinyls/owned/:albumId - Remove owned album',
+        addFavorite: 'POST /api/user/vinyls/favorite - Mark album as favorite',
+        removeFavorite: 'DELETE /api/user/vinyls/favorite/:albumId - Remove favorite',
+        getOwned: 'GET /api/user/vinyls/owned - Get owned albums',
+        getFavorites: 'GET /api/user/vinyls/favorites - Get favorite albums',
+        getStatus: 'GET /api/user/vinyls/status - Get album status (owned + favorites)'
       }
     },
     instructions: [
       '1. Visit /auth/login to get the Spotify authorization URL',
       '2. Authorize the application in your browser',
       '3. After authorization, visit /api/vinyl-recommendations to get your personalized vinyl recommendations',
-      '4. Use /api/album/{album_id} to get detailed information about any album'
+      '4. (Optional) Register with /api/auth/register to mark albums as owned or favorite',
+      '5. Use /api/album/{album_id} to get detailed information about any album'
     ]
   });
 });
@@ -103,6 +121,12 @@ app.use('/auth', authRoutes);
 
 // API routes
 app.use('/api', recommendationRoutes);
+
+// User authentication routes (email/password)
+app.use('/api/auth', userAuthRoutes);
+
+// User vinyl management routes
+app.use('/api/user/vinyls', userVinylRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

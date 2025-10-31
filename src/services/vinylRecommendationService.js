@@ -1,6 +1,7 @@
 import { getArtistTopAlbums } from './spotifyService.js';
 import { searchVinylPrice } from './discogsService.js';
 import * as cacheService from './cacheService.js';
+import { getUserAlbumStatus } from './userVinylService.js';
 
 // Cache TTL for vinyl recommendations: 12 hours (43200 seconds)
 const VINYL_CACHE_TTL = 12 * 60 * 60;
@@ -8,19 +9,30 @@ const VINYL_CACHE_TTL = 12 * 60 * 60;
 /**
  * Analyzes user's Spotify listening data and recommends vinyl records to purchase
  * Note: Singles (albums with only 1 track) are filtered out as they rarely have vinyl versions
+ * @param {Object} analysisData - User's Spotify listening data
+ * @param {number|null} userId - Optional user ID for personalized filtering (owned/favorites)
+ * NOTE: Caching is now handled in the controller, not here
  */
-export const generateVinylRecommendations = async (analysisData) => {
-  const cacheKey = cacheService.generateKey('vinyl_recommendations', 'vinyl');
-  
-  // Try to get from cache
-  const cachedData = cacheService.get(cacheKey);
-  if (cachedData) {
-    return cachedData;
-  }
-
+export const generateVinylRecommendations = async (analysisData, userId = null) => {
   const { topTracks, topArtists, topAlbums } = analysisData;
 
   console.log(`🎵 Generating vinyl recommendations from ${topAlbums.length} albums and ${topArtists.length} artists`);
+
+  // Get user's owned and favorite albums if logged in
+  let ownedAlbums = new Set();
+  let favoriteAlbums = new Set();
+
+  if (userId) {
+    try {
+      const userAlbumStatus = await getUserAlbumStatus(userId);
+      ownedAlbums = userAlbumStatus.owned;
+      favoriteAlbums = userAlbumStatus.favorites;
+      console.log(`👤 User has ${ownedAlbums.size} owned albums and ${favoriteAlbums.size} favorites`);
+    } catch (error) {
+      console.error('Error getting user album status:', error);
+      // Continue without filtering if error
+    }
+  }
 
   const recommendations = [];
   const addedAlbumIds = new Set();
@@ -42,6 +54,11 @@ export const generateVinylRecommendations = async (analysisData) => {
     ).length;
     score += genreMatches * 5;
 
+    // BONUS: If album is in user's favorites, give significant boost
+    if (favoriteAlbums.has(album.id)) {
+      score += 1000; // High priority for favorites
+    }
+
     return score;
   };
 
@@ -49,6 +66,12 @@ export const generateVinylRecommendations = async (analysisData) => {
   const artistAlbumMap = new Map();
 
   topAlbums.forEach(album => {
+    // Skip albums the user already owns
+    if (ownedAlbums.has(album.id)) {
+      console.log(`⏭️ Skipping owned album: ${album.artist} - ${album.name}`);
+      return;
+    }
+
     if (!addedAlbumIds.has(album.id)) {
       const score = calculateScore(album, album.artist);
       artistAlbumMap.set(album.id, {
@@ -89,6 +112,13 @@ export const generateVinylRecommendations = async (analysisData) => {
       const albums = await getArtistTopAlbums(artist.id, 1);
       if (albums && albums.length > 0) {
         const album = albums[0];
+
+        // Skip if user already owns this album
+        if (ownedAlbums.has(album.id)) {
+          console.log(`⏭️ Skipping owned album: ${artist.name} - ${album.name}`);
+          return null;
+        }
+
         return {
           albumId: album.id,
           albumName: album.name,
@@ -145,23 +175,14 @@ export const generateVinylRecommendations = async (analysisData) => {
     }
   }
 
-  // Cache the recommendations
-  cacheService.set(cacheKey, [...recommendationsWithPrices, ...remaining], VINYL_CACHE_TTL);
   return [...recommendationsWithPrices, ...remaining];
 };
 
 /**
  * Generates a summary of the user's music taste
+ * NOTE: Caching is now handled in the controller, not here
  */
 export const generateMusicTasteSummary = (analysisData) => {
-  const cacheKey = cacheService.generateKey('music_taste_summary', 'vinyl');
-  
-  // Try to get from cache
-  const cachedData = cacheService.get(cacheKey);
-  if (cachedData) {
-    return cachedData;
-  }
-
   const { topArtists } = analysisData;
 
   // Extract all genres
@@ -187,8 +208,6 @@ export const generateMusicTasteSummary = (analysisData) => {
       totalArtistsAnalyzed: topArtists.length
     }
   };
-  
-  // Cache the summary
-  cacheService.set(cacheKey, result, VINYL_CACHE_TTL);
+
   return result;
 };

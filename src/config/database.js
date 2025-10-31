@@ -54,11 +54,19 @@ export const initializeDatabase = async () => {
         album_id VARCHAR(255) NOT NULL,
         album_name VARCHAR(255) NOT NULL,
         artist VARCHAR(255) NOT NULL,
+        cover_image TEXT,
         marked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(user_id, album_id)
       )
     `);
     console.log('  ✓ User vinyls table ready');
+
+    // Add cover_image column if it doesn't exist (migration)
+    await client.query(`
+      ALTER TABLE user_vinyls
+      ADD COLUMN IF NOT EXISTS cover_image TEXT
+    `);
+    console.log('  ✓ User vinyls cover_image column added');
 
     // Create user_favorites table (albums the user favorites)
     await client.query(`
@@ -68,11 +76,19 @@ export const initializeDatabase = async () => {
         album_id VARCHAR(255) NOT NULL,
         album_name VARCHAR(255) NOT NULL,
         artist VARCHAR(255) NOT NULL,
+        cover_image TEXT,
         marked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(user_id, album_id)
       )
     `);
     console.log('  ✓ User favorites table ready');
+
+    // Add cover_image column if it doesn't exist (migration)
+    await client.query(`
+      ALTER TABLE user_favorites
+      ADD COLUMN IF NOT EXISTS cover_image TEXT
+    `);
+    console.log('  ✓ User favorites cover_image column added');
 
     // Create index for faster queries
     await client.query(`

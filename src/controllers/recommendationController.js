@@ -31,15 +31,17 @@ export const getUserAnalysis = async (req, res) => {
 export const getVinylRecommendations = async (req, res) => {
   try {
     const timeRange = req.query.timeRange || 'medium_term';
-    const userId = req.userId;
+    const spotifyUserId = req.userId; // Spotify user ID (from authenticateToken middleware)
+    const jwtUserId = req.user?.userId || null; // JWT user ID (optional, for owned/favorites)
 
-    // Try to get from cache if userId is available
-    if (userId) {
-      const cacheKey = cache.generateKey(userId, timeRange, 'vinyl');
+    // Use Spotify user ID for caching (each Spotify account has its own cache)
+    const cacheKey = cache.generateKey(`${spotifyUserId}:${timeRange}`, 'vinyl');
+
+    // If user is logged in with JWT, don't use cache (because owned/favorites change)
+    if (!jwtUserId) {
       const cachedData = cache.get(cacheKey);
-
       if (cachedData) {
-        console.log('✨ Returning cached vinyl recommendations');
+        console.log(`✨ Returning cached vinyl recommendations for Spotify user ${spotifyUserId}`);
         return res.json({
           ...cachedData,
           cached: true,
@@ -48,10 +50,10 @@ export const getVinylRecommendations = async (req, res) => {
       }
     }
 
-    // Cache miss or no userId - generate fresh recommendations
-    console.log('🔄 Generating fresh vinyl recommendations');
+    // Cache miss or user has JWT login - generate fresh recommendations
+    console.log(`🔄 Generating fresh vinyl recommendations for Spotify user ${spotifyUserId}`);
     const analysisData = await getAnalysisData(timeRange);
-    const recommendations = await generateVinylRecommendations(analysisData);
+    const recommendations = await generateVinylRecommendations(analysisData, jwtUserId);
     const musicTasteSummary = generateMusicTasteSummary(analysisData);
 
     const responseData = {
@@ -63,10 +65,11 @@ export const getVinylRecommendations = async (req, res) => {
       cached: false
     };
 
-    // Cache the result if userId is available
-    if (userId) {
-      const cacheKey = cache.generateKey(userId, timeRange, 'vinyl');
+    // Cache the result only if user doesn't have JWT login
+    // (JWT users get personalized results that shouldn't be cached)
+    if (!jwtUserId) {
       cache.set(cacheKey, responseData);
+      console.log(`💾 Cached vinyl recommendations for Spotify user ${spotifyUserId}`);
     }
 
     res.json(responseData);
@@ -129,20 +132,47 @@ export const getAlbumDetailsController = async (req, res) => {
 export const getDiscoveryRecommendations = async (req, res) => {
   try {
     const timeRange = req.query.timeRange || 'medium_term';
+    const spotifyUserId = req.userId; // Spotify user ID (from authenticateToken middleware)
+    const jwtUserId = req.user?.userId || null; // JWT user ID (optional, for owned/favorites)
 
-    console.log('🎯 Generating discovery recommendations...');
+    // Use Spotify user ID for caching
+    const cacheKey = cache.generateKey(`${spotifyUserId}:${timeRange}`, 'discovery');
+
+    // If user is logged in with JWT, don't use cache (because owned/favorites change)
+    if (!jwtUserId) {
+      const cachedData = cache.get(cacheKey);
+      if (cachedData) {
+        console.log(`✨ Returning cached discovery recommendations for Spotify user ${spotifyUserId}`);
+        return res.json({
+          ...cachedData,
+          cached: true,
+          cacheHit: true
+        });
+      }
+    }
+
+    console.log(`🎯 Generating fresh discovery recommendations for Spotify user ${spotifyUserId}`);
     const analysisData = await getAnalysisData(timeRange);
-    const recommendations = await generateDiscoveryRecommendations(analysisData);
+    const recommendations = await generateDiscoveryRecommendations(analysisData, jwtUserId);
     const summary = generateDiscoverySummary(recommendations);
 
-    res.json({
+    const responseData = {
       success: true,
       summary: summary,
       recommendations: recommendations,
       totalRecommendations: recommendations.length,
       timeRange: timeRange,
-      message: 'Descubre discos basados en tus gustos musicales'
-    });
+      message: 'Descubre discos basados en tus gustos musicales',
+      cached: false
+    };
+
+    // Cache the result only if user doesn't have JWT login
+    if (!jwtUserId) {
+      cache.set(cacheKey, responseData);
+      console.log(`💾 Cached discovery recommendations for Spotify user ${spotifyUserId}`);
+    }
+
+    res.json(responseData);
   } catch (error) {
     console.error('Error generating discovery recommendations:', error);
 

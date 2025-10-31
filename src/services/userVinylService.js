@@ -6,18 +6,19 @@ import pool from '../config/database.js';
  * @param {string} albumId - Album ID
  * @param {string} albumName - Album name
  * @param {string} artist - Artist name
+ * @param {string} coverImage - Album cover image URL
  * @returns {Promise<object>} Created record
  */
-export const markAlbumAsOwned = async (userId, albumId, albumName, artist) => {
+export const markAlbumAsOwned = async (userId, albumId, albumName, artist, coverImage = null) => {
   const client = await pool.connect();
 
   try {
     const result = await client.query(
-      `INSERT INTO user_vinyls (user_id, album_id, album_name, artist)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO user_vinyls (user_id, album_id, album_name, artist, cover_image)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (user_id, album_id) DO NOTHING
        RETURNING id, marked_at`,
-      [userId, albumId, albumName, artist]
+      [userId, albumId, albumName, artist, coverImage]
     );
 
     if (result.rows.length === 0) {
@@ -64,18 +65,19 @@ export const unmarkAlbumAsOwned = async (userId, albumId) => {
  * @param {string} albumId - Album ID
  * @param {string} albumName - Album name
  * @param {string} artist - Artist name
+ * @param {string} coverImage - Album cover image URL
  * @returns {Promise<object>} Created record
  */
-export const markAlbumAsFavorite = async (userId, albumId, albumName, artist) => {
+export const markAlbumAsFavorite = async (userId, albumId, albumName, artist, coverImage = null) => {
   const client = await pool.connect();
 
   try {
     const result = await client.query(
-      `INSERT INTO user_favorites (user_id, album_id, album_name, artist)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO user_favorites (user_id, album_id, album_name, artist, cover_image)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (user_id, album_id) DO NOTHING
        RETURNING id, marked_at`,
-      [userId, albumId, albumName, artist]
+      [userId, albumId, albumName, artist, coverImage]
     );
 
     if (result.rows.length === 0) {
@@ -119,14 +121,14 @@ export const unmarkAlbumAsFavorite = async (userId, albumId) => {
 /**
  * Get all owned albums for a user
  * @param {number} userId - User ID
- * @returns {Promise<array>} List of owned album IDs
+ * @returns {Promise<array>} List of owned albums with details
  */
 export const getUserOwnedAlbums = async (userId) => {
   const client = await pool.connect();
 
   try {
     const result = await client.query(
-      'SELECT album_id, album_name, artist, marked_at FROM user_vinyls WHERE user_id = $1 ORDER BY marked_at DESC',
+      'SELECT album_id, album_name, artist, cover_image, marked_at FROM user_vinyls WHERE user_id = $1 ORDER BY marked_at DESC',
       [userId]
     );
 
@@ -134,6 +136,7 @@ export const getUserOwnedAlbums = async (userId) => {
       albumId: row.album_id,
       albumName: row.album_name,
       artist: row.artist,
+      coverImage: row.cover_image,
       markedAt: row.marked_at,
     }));
   } finally {
@@ -144,14 +147,14 @@ export const getUserOwnedAlbums = async (userId) => {
 /**
  * Get all favorite albums for a user
  * @param {number} userId - User ID
- * @returns {Promise<array>} List of favorite album IDs
+ * @returns {Promise<array>} List of favorite albums with details
  */
 export const getUserFavoriteAlbums = async (userId) => {
   const client = await pool.connect();
 
   try {
     const result = await client.query(
-      'SELECT album_id, album_name, artist, marked_at FROM user_favorites WHERE user_id = $1 ORDER BY marked_at DESC',
+      'SELECT album_id, album_name, artist, cover_image, marked_at FROM user_favorites WHERE user_id = $1 ORDER BY marked_at DESC',
       [userId]
     );
 
@@ -159,6 +162,7 @@ export const getUserFavoriteAlbums = async (userId) => {
       albumId: row.album_id,
       albumName: row.album_name,
       artist: row.artist,
+      coverImage: row.cover_image,
       markedAt: row.marked_at,
     }));
   } finally {
