@@ -5,6 +5,7 @@ import authRoutes from './routes/authRoutes.js';
 import recommendationRoutes from './routes/recommendationRoutes.js';
 import userAuthRoutes from './routes/userAuthRoutes.js';
 import userVinylRoutes from './routes/userVinylRoutes.js';
+import priceRoutes from './routes/priceRoutes.js';
 import { callback } from './controllers/authController.js';
 import { initializeDatabase } from './config/database.js';
 
@@ -101,6 +102,11 @@ app.get('/', (req, res) => {
         getOwned: 'GET /api/user/vinyls/owned - Get owned albums',
         getFavorites: 'GET /api/user/vinyls/favorites - Get favorite albums',
         getStatus: 'GET /api/user/vinyls/status - Get album status (owned + favorites)'
+      },
+      prices: {
+        search: 'GET /api/prices/search?artist=ARTIST&album=ALBUM - Search prices in Chilean stores',
+        cheapest: 'GET /api/prices/cheapest?artist=ARTIST&album=ALBUM - Get cheapest price',
+        compare: 'GET /api/prices/compare?artist=ARTIST&album=ALBUM - Compare prices by store'
       }
     },
     instructions: [
@@ -127,6 +133,9 @@ app.use('/api/auth', userAuthRoutes);
 
 // User vinyl management routes
 app.use('/api/user/vinyls', userVinylRoutes);
+
+// Price comparison routes
+app.use('/api/prices', priceRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

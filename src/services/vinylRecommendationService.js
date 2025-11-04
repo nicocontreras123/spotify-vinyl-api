@@ -21,12 +21,16 @@ export const generateVinylRecommendations = async (analysisData, userId = null) 
   // Get user's owned and favorite albums if logged in
   let ownedAlbums = new Set();
   let favoriteAlbums = new Set();
+  let ownedAlbumNames = new Set();
+  let favoriteAlbumNames = new Set();
 
   if (userId) {
     try {
       const userAlbumStatus = await getUserAlbumStatus(userId);
       ownedAlbums = userAlbumStatus.owned;
       favoriteAlbums = userAlbumStatus.favorites;
+      ownedAlbumNames = userAlbumStatus.ownedNames;
+      favoriteAlbumNames = userAlbumStatus.favoriteNames;
       console.log(`👤 User has ${ownedAlbums.size} owned albums and ${favoriteAlbums.size} favorites`);
     } catch (error) {
       console.error('Error getting user album status:', error);
@@ -66,9 +70,16 @@ export const generateVinylRecommendations = async (analysisData, userId = null) 
   const artistAlbumMap = new Map();
 
   topAlbums.forEach(album => {
-    // Skip albums the user already owns
-    if (ownedAlbums.has(album.id)) {
-      console.log(`⏭️ Skipping owned album: ${album.artist} - ${album.name}`);
+    // Create name-based lookup key
+    const albumKey = `${album.name.toLowerCase()}|${album.artist.toLowerCase()}`;
+
+    // Skip albums the user already owns (by ID or name)
+    if (album.id && ownedAlbums.has(album.id)) {
+      console.log(`⏭️ Skipping owned album (by ID): ${album.artist} - ${album.name}`);
+      return;
+    }
+    if (ownedAlbumNames.has(albumKey)) {
+      console.log(`⏭️ Skipping owned album (by name): ${album.artist} - ${album.name}`);
       return;
     }
 
@@ -113,9 +124,16 @@ export const generateVinylRecommendations = async (analysisData, userId = null) 
       if (albums && albums.length > 0) {
         const album = albums[0];
 
-        // Skip if user already owns this album
-        if (ownedAlbums.has(album.id)) {
-          console.log(`⏭️ Skipping owned album: ${artist.name} - ${album.name}`);
+        // Create name-based lookup key
+        const albumKey = `${album.name.toLowerCase()}|${artist.name.toLowerCase()}`;
+
+        // Skip if user already owns this album (by ID or name)
+        if (album.id && ownedAlbums.has(album.id)) {
+          console.log(`⏭️ Skipping owned album (by ID): ${artist.name} - ${album.name}`);
+          return null;
+        }
+        if (ownedAlbumNames.has(albumKey)) {
+          console.log(`⏭️ Skipping owned album (by name): ${artist.name} - ${album.name}`);
           return null;
         }
 

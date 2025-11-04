@@ -1,4 +1,4 @@
-import { getAnalysisData, getAlbumDetails } from '../services/spotifyService.js';
+import { getAnalysisData, getAlbumDetails, searchAlbums } from '../services/spotifyService.js';
 import { generateVinylRecommendations, generateMusicTasteSummary } from '../services/vinylRecommendationService.js';
 import { generateDiscoveryRecommendations, generateDiscoverySummary } from '../services/discoveryService.js';
 import * as cache from '../services/cacheService.js';
@@ -186,6 +186,47 @@ export const getDiscoveryRecommendations = async (req, res) => {
 
     res.status(500).json({
       error: 'Error al generar recomendaciones de descubrimiento',
+      details: error.message
+    });
+  }
+};
+
+/**
+ * Search albums in Spotify
+ */
+export const searchAlbumsController = async (req, res) => {
+  try {
+    const query = req.query.q || req.query.query;
+    const limit = parseInt(req.query.limit) || 20;
+
+    if (!query || query.trim().length === 0) {
+      return res.status(400).json({
+        error: 'Solicitud incorrecta',
+        message: 'Se requiere un término de búsqueda'
+      });
+    }
+
+    const albums = await searchAlbums(query, limit);
+
+    res.json({
+      success: true,
+      query: query,
+      results: albums,
+      totalResults: albums.length
+    });
+  } catch (error) {
+    console.error('Error searching albums:', error);
+
+    // If it's an authentication error, return 401/403
+    if (error.statusCode === 401 || error.statusCode === 403) {
+      return res.status(error.statusCode).json({
+        error: 'Error de autenticación',
+        details: error.message
+      });
+    }
+
+    res.status(500).json({
+      error: 'Error al buscar álbumes',
       details: error.message
     });
   }

@@ -26,12 +26,16 @@ export const generateDiscoveryRecommendations = async (analysisData, userId = nu
   // Get user's owned and favorite albums if logged in
   let ownedAlbums = new Set();
   let favoriteAlbums = new Set();
+  let ownedAlbumNames = new Set();
+  let favoriteAlbumNames = new Set();
 
   if (userId) {
     try {
       const userAlbumStatus = await getUserAlbumStatus(userId);
       ownedAlbums = userAlbumStatus.owned;
       favoriteAlbums = userAlbumStatus.favorites;
+      ownedAlbumNames = userAlbumStatus.ownedNames;
+      favoriteAlbumNames = userAlbumStatus.favoriteNames;
       console.log(`👤 User has ${ownedAlbums.size} owned albums and ${favoriteAlbums.size} favorites for discovery`);
     } catch (error) {
       console.error('Error getting user album status for discovery:', error);
@@ -41,6 +45,10 @@ export const generateDiscoveryRecommendations = async (analysisData, userId = nu
 
   const albumRecommendations = [];
 
+  // Prepare sets for filtering user's existing artists
+  const userArtistIds = new Set(topArtists.map(artist => artist.id));
+  const userArtistNames = new Set(topArtists.map(artist => artist.name.toLowerCase()));
+
   // Step 1: Get similar artists using Last.fm
   let similarArtists = [];
   if (USE_LASTFM) {
@@ -49,31 +57,28 @@ export const generateDiscoveryRecommendations = async (analysisData, userId = nu
       similarArtists = await getSimilarArtistsFromLastfm(topArtists);
     } catch (error) {
       console.error('Error fetching from Last.fm, falling back to Spotify:', error.message);
-      const userArtistIds = new Set(topArtists.map(artist => artist.id));
-      const userArtistNames = new Set(topArtists.map(artist => artist.name.toLowerCase()));
       similarArtists = await getDiscoveryFromSpotify(topArtists, userArtistIds, userArtistNames);
     }
   }
 
-  // Step 2: Get albums from both user's top artists and similar artists
-  // Total: 8 user artists + 12 similar = 20 artists (optimized for performance)
-  const artistsToExplore = [
-    // User's top artists with high relevance (reduced to 8 for performance)
-    ...topArtists.slice(0, 8).map(artist => ({
-      ...artist,
-      relevanceScore: 10, // High base score for user's own artists
-      similarToArtists: ['Tus artistas favoritos'],
-      similarity: 1.0,
-      isUserArtist: true
-    })),
-    // Similar artists (12 from Last.fm)
-    ...similarArtists.map(artist => ({
-      ...artist,
-      isUserArtist: false
-    }))
-  ];
+  // Step 2: Get albums ONLY from similar/new artists (NOT user's top artists)
+  // This ensures Discovery shows truly new music
 
-  console.log(`💿 Exploring ${artistsToExplore.length} artists for album recommendations...`);
+  // Filter out any similar artists that are actually user's top artists
+  const newArtistsOnly = similarArtists.filter(artist => {
+    const isUserArtist = artist.id ? userArtistIds.has(artist.id) : userArtistNames.has(artist.name.toLowerCase());
+    if (isUserArtist) {
+      console.log(`  ⏭️  Skipping user's top artist from discovery: ${artist.name}`);
+    }
+    return !isUserArtist;
+  });
+
+  const artistsToExplore = newArtistsOnly.map(artist => ({
+    ...artist,
+    isUserArtist: false
+  }));
+
+  console.log(`💿 Exploring ${artistsToExplore.length} NEW artists for album recommendations (excluded ${topArtists.length} user's top artists)...`);
 
   // OPTIMIZATION: Fetch albums for all artists in parallel instead of sequentially
   const albumPromises = artistsToExplore.map(async (artist) => {
@@ -104,15 +109,22 @@ export const generateDiscoveryRecommendations = async (analysisData, userId = nu
       // Process albums and return recommendations for this artist
       return albums
         .filter(album => {
-          // Skip if user already owns this album
+          // Create name-based lookup key
+          const albumKey = `${album.name.toLowerCase()}|${artist.name.toLowerCase()}`;
+
+          // Skip if user already owns this album (by ID or name)
           if (album.id && ownedAlbums.has(album.id)) {
-            console.log(`  ⏭️  Skipping owned album: ${artist.name} - ${album.name}`);
+            console.log(`  ⏭️  Skipping owned album (by ID): ${artist.name} - ${album.name}`);
+            return false;
+          }
+          if (ownedAlbumNames.has(albumKey)) {
+            console.log(`  ⏭️  Skipping owned album (by name): ${artist.name} - ${album.name}`);
             return false;
           }
 
-          // Skip if already in user's top albums
+          // Skip if already in user's top albums (from main recommendations)
           if (userAlbumNames.has(album.name.toLowerCase())) {
-            console.log(`  ⏭️  Skipping already listened album: ${album.name}`);
+            console.log(`  ⏭️  Skipping album from main recommendations: ${album.name}`);
             return false;
           }
           return true;
@@ -138,14 +150,12 @@ export const generateDiscoveryRecommendations = async (analysisData, userId = nu
             releaseDate: album.release_date || null,
             coverImage: album.images?.[0]?.url || album.image || artist.image || null,
             spotifyUri: album.uri || null,
-            reason: artist.isUserArtist
-              ? `Más discos de ${artist.name}, uno de tus artistas favoritos`
-              : `Similar a ${artist.similarToArtists?.slice(0, 2).join(', ') || 'tus gustos'}`,
+            reason: `Similar a ${artist.similarToArtists?.slice(0, 2).join(', ') || 'tus gustos musicales'}`,
             genres: artist.genres || artist.tags || [],
             popularity: Math.round((artist.similarity || 0) * 100),
             relevanceScore: albumRelevanceScore,
             similarToArtists: artist.similarToArtists || [],
-            isFromUserArtist: artist.isUserArtist || false,
+            isFromUserArtist: false, // Always false now since we exclude user's artists
             discovery: true,
             type: 'album_discovery',
             source: artist.id ? 'spotify' : 'lastfm',
@@ -172,12 +182,28 @@ export const generateDiscoveryRecommendations = async (analysisData, userId = nu
     }
   });
 
-  // Step 3: Sort by relevance score and take top 30
-  const sortedRecommendations = albumRecommendations
+  console.log(`💿 Total albums before artist limit: ${albumRecommendations.length}`);
+
+  // Step 3: Limit to maximum 2 albums per artist
+  const artistAlbumCount = new Map();
+  const filteredByArtist = albumRecommendations.filter(rec => {
+    const count = artistAlbumCount.get(rec.artist) || 0;
+    if (count >= 2) {
+      console.log(`  ⏭️ Skipping ${rec.artist} - ${rec.albumName} (already have 2 albums from this artist)`);
+      return false;
+    }
+    artistAlbumCount.set(rec.artist, count + 1);
+    return true;
+  });
+
+  console.log(`💿 After limiting to 2 per artist: ${filteredByArtist.length}`);
+
+  // Step 4: Sort by relevance score and take top 30
+  const sortedRecommendations = filteredByArtist
     .sort((a, b) => b.relevanceScore - a.relevanceScore)
     .slice(0, 30);
 
-  console.log(`💿 Generated ${sortedRecommendations.length} album recommendations (sorted by relevance)`);
+  console.log(`💿 Final album recommendations after sorting: ${sortedRecommendations.length}`);
 
   // Add rank
   const rankedRecommendations = sortedRecommendations.map((rec, index) => ({

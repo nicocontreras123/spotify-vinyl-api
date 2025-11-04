@@ -173,20 +173,34 @@ export const getUserFavoriteAlbums = async (userId) => {
 /**
  * Get user's owned and favorite album IDs (for quick filtering)
  * @param {number} userId - User ID
- * @returns {Promise<object>} Sets of owned and favorite album IDs
+ * @returns {Promise<object>} Sets of owned and favorite album IDs, plus name-based lookup
  */
 export const getUserAlbumStatus = async (userId) => {
   const client = await pool.connect();
 
   try {
     const [ownedResult, favoriteResult] = await Promise.all([
-      client.query('SELECT album_id FROM user_vinyls WHERE user_id = $1', [userId]),
-      client.query('SELECT album_id FROM user_favorites WHERE user_id = $1', [userId]),
+      client.query('SELECT album_id, album_name, artist FROM user_vinyls WHERE user_id = $1', [userId]),
+      client.query('SELECT album_id, album_name, artist FROM user_favorites WHERE user_id = $1', [userId]),
     ]);
 
+    // Create Sets for both ID-based and name-based lookups
+    const ownedIds = new Set(ownedResult.rows.map(row => row.album_id));
+    const favoriteIds = new Set(favoriteResult.rows.map(row => row.album_id));
+
+    // Create name-based lookups (album name + artist name, lowercase)
+    const ownedNames = new Set(
+      ownedResult.rows.map(row => `${row.album_name.toLowerCase()}|${row.artist.toLowerCase()}`)
+    );
+    const favoriteNames = new Set(
+      favoriteResult.rows.map(row => `${row.album_name.toLowerCase()}|${row.artist.toLowerCase()}`)
+    );
+
     return {
-      owned: new Set(ownedResult.rows.map(row => row.album_id)),
-      favorites: new Set(favoriteResult.rows.map(row => row.album_id)),
+      owned: ownedIds,
+      favorites: favoriteIds,
+      ownedNames: ownedNames,
+      favoriteNames: favoriteNames
     };
   } finally {
     client.release();

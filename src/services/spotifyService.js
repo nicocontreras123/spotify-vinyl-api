@@ -225,10 +225,59 @@ export const getAlbumDetails = async (albumId) => {
   }
 };
 
+export const searchAlbums = async (query, limit = 20) => {
+  try {
+    const cacheKey = cacheService.generateKey(`search_albums:${query}:${limit}`, 'spotify');
+
+    // Try to get from cache
+    const cachedData = cacheService.get(cacheKey);
+    if (cachedData) {
+      return cachedData;
+    }
+
+    const data = await spotifyApi.searchAlbums(query, { limit });
+
+    // Filter out singles (albums with only 1 track) as they rarely have vinyl versions
+    const albums = data.body.albums.items
+      .filter(album => album.total_tracks >= 2)
+      .map(album => ({
+        id: album.id,
+        name: album.name,
+        artist: album.artists[0].name,
+        artists: album.artists.map(artist => ({
+          id: artist.id,
+          name: artist.name
+        })),
+        releaseDate: album.release_date,
+        totalTracks: album.total_tracks,
+        images: album.images,
+        coverImage: album.images[0]?.url || null,
+        uri: album.uri
+      }));
+
+    cacheService.set(cacheKey, albums, SPOTIFY_CACHE_TTL);
+    return albums;
+  } catch (error) {
+    console.error('Error searching albums:', error);
+
+    // Handle 401/403 authentication errors specifically
+    if (error.statusCode === 401 || error.statusCode === 403) {
+      const authError = new Error('El token de acceso ha expirado o tiene permisos insuficientes.');
+      authError.statusCode = error.statusCode;
+      throw authError;
+    }
+
+    const errorMessage = error.body?.error?.message || error.message || `Estado ${error.statusCode || 'desconocido'}`;
+    const err = new Error(`Error al buscar álbumes: ${errorMessage}`);
+    err.statusCode = error.statusCode;
+    throw err;
+  }
+};
+
 export const getAnalysisData = async (timeRange = 'medium_term') => {
   try {
     const cacheKey = cacheService.generateKey(`analysis:${timeRange}`, 'spotify');
-    
+
     // Try to get from cache
     const cachedData = cacheService.get(cacheKey);
     if (cachedData) {
@@ -276,7 +325,7 @@ export const getAnalysisData = async (timeRange = 'medium_term') => {
       })),
       topAlbums: albums
     };
-    
+
     cacheService.set(cacheKey, result, SPOTIFY_CACHE_TTL);
     return result;
   } catch (error) {
