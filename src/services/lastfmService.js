@@ -3,6 +3,96 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+/**
+ * Check if an album name indicates a compilation or special edition
+ * Shared logic with spotifyService to ensure consistent filtering
+ */
+const isCompilationOrSpecialEdition = (albumName) => {
+  if (!albumName) return false;
+
+  const name = albumName.toLowerCase();
+
+  // Compilation keywords
+  const compilationKeywords = [
+    'greatest hits',
+    'best of',
+    'the best',
+    'very best',
+    'collection',
+    'compilation',
+    'anthology',
+    'essential',
+    'complete',
+    'ultimate',
+    ' hits',
+    'gold',
+    'platinum',
+    'singles collection',
+    'the singles',
+    'essential mix',
+    'top hits',
+    'recopilacion',
+    'lo mejor de',
+    'exitos',
+    'coleccion',
+    'antologia',
+    'obras completas',
+    'live', // Live albums
+    'en vivo',
+    'in concert',
+    'unplugged'
+  ];
+
+  // Special/Anniversary edition keywords
+  const specialEditionKeywords = [
+    'anniversary',
+    'aniversario',
+    'deluxe edition',
+    'edicion deluxe',
+    'expanded edition',
+    'edicion ampliada',
+    'special edition',
+    'edicion especial',
+    'collector',
+    'coleccionista',
+    'remaster',
+    'remasterizado',
+    'remastered',
+    'super deluxe',
+    'box set',
+    'expanded',
+    'ampliada',
+    'limited edition',
+    'edicion limitada'
+  ];
+
+  // Check for compilation keywords
+  const hasCompilationKeyword = compilationKeywords.some(keyword =>
+    name.includes(keyword)
+  );
+
+  if (hasCompilationKeyword) {
+    return true;
+  }
+
+  // Check for special edition keywords
+  const hasSpecialEditionKeyword = specialEditionKeywords.some(keyword =>
+    name.includes(keyword)
+  );
+
+  if (hasSpecialEditionKeyword) {
+    return true;
+  }
+
+  // Check for year in parentheses at the end (often reissues/remasters)
+  const yearPatternAtEnd = /\(\d{4}[^)]*\)$/;
+  if (yearPatternAtEnd.test(name)) {
+    return true;
+  }
+
+  return false;
+};
+
 const LASTFM_API_URL = 'http://ws.audioscrobbler.com/2.0/';
 const LASTFM_API_KEY = process.env.LASTFM_API_KEY || null;
 const LASTFM_SHARED_SECRET = process.env.LASTFM_SHARED_SECRET || null;
@@ -157,10 +247,13 @@ export const getArtistTopAlbumsFromLastfm = async (artistName, limit = 5) => {
         ? data.topalbums.album
         : [data.topalbums.album];
 
-      // First filter: compilations and live albums
+      // Filter out compilations, live albums, and special editions
       const filteredByName = albums.filter(album => {
-        const name = album.name.toLowerCase();
-        return !name.includes('compilation') && !name.includes('live');
+        if (isCompilationOrSpecialEdition(album.name)) {
+          console.log(`  ⏭️  Last.fm: Skipping compilation/special edition: ${album.name}`);
+          return false;
+        }
+        return true;
       });
 
       // Second filter: get album details to check track count (in parallel for speed)

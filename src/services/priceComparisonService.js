@@ -6,6 +6,59 @@ import * as cacheService from './cacheService.js';
 // Cache TTL for price data: 6 hours (prices change frequently)
 const PRICE_CACHE_TTL = 6 * 60 * 60;
 
+// Text normalization utilities for better matching
+const normalizeText = (text) => {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove accents
+    .replace(/[^\w\s]/g, ' ') // Replace special chars with spaces
+    .replace(/\s+/g, ' ') // Normalize spaces
+    .trim();
+};
+
+// Calculate similarity score between two strings (0-100)
+const calculateSimilarity = (str1, str2) => {
+  const s1 = normalizeText(str1);
+  const s2 = normalizeText(str2);
+
+  if (s1 === s2) return 100;
+
+  const words1 = s1.split(' ');
+  const words2 = s2.split(' ');
+
+  let matchCount = 0;
+  words1.forEach(word => {
+    if (word.length > 2 && words2.some(w => w.includes(word) || word.includes(w))) {
+      matchCount++;
+    }
+  });
+
+  const totalWords = Math.max(words1.length, words2.length);
+  return totalWords > 0 ? Math.round((matchCount / totalWords) * 100) : 0;
+};
+
+// Check if title is relevant to artist and album
+const isRelevantResult = (title, artist, album) => {
+  const normalizedTitle = normalizeText(title);
+  const normalizedArtist = normalizeText(artist);
+  const normalizedAlbum = normalizeText(album);
+
+  const artistScore = calculateSimilarity(normalizedTitle, normalizedArtist);
+  const albumScore = calculateSimilarity(normalizedTitle, normalizedAlbum);
+
+  // Combined score: both artist and album should have some presence
+  const combinedScore = (artistScore * 0.4) + (albumScore * 0.6);
+
+  return {
+    score: combinedScore,
+    isRelevant: combinedScore >= 30, // At least 30% match
+    artistScore,
+    albumScore
+  };
+};
+
 /**
  * Search for vinyl prices across Chilean stores
  * @param {string} artist - Artist name
@@ -27,27 +80,59 @@ export const searchVinylPrices = async (artist, album) => {
   const searchPromises = [
     searchGoogleShopping(artist, album),
     searchMercadoLibre(artist, album),
-    // TODO: Add more stores if needed
+    searchNeedleMusica(artist, album),
+    searchDiscocentro(artist, album),
   ];
 
   const results = await Promise.allSettled(searchPromises);
 
-  // Combine all results
+  // Combine all results with relevance scoring
   const allPrices = [];
   results.forEach((result, index) => {
     console.log(`  📊 Promise ${index} status:`, result.status);
     if (result.status === 'fulfilled') {
       console.log(`  ✅ Promise ${index} returned ${result.value.length} results`);
       if (result.value.length > 0) {
-        allPrices.push(...result.value);
+        // Add relevance scoring to each result
+        const scoredResults = result.value.map(item => {
+          if (item.isSearchLink) return item; // Skip search links
+
+          const relevance = isRelevantResult(item.title, artist, album);
+          return {
+            ...item,
+            relevanceScore: relevance.score,
+            artistMatchScore: relevance.artistScore,
+            albumMatchScore: relevance.albumScore,
+          };
+        });
+
+        // Filter by relevance (keep only relevant results)
+        const relevantResults = scoredResults.filter(item =>
+          item.isSearchLink || item.relevanceScore >= 30
+        );
+
+        console.log(`    Filtered from ${scoredResults.length} to ${relevantResults.length} relevant results`);
+        allPrices.push(...relevantResults);
       }
     } else {
       console.log(`  ❌ Promise ${index} failed:`, result.reason?.message || result.reason);
     }
   });
 
-  // Sort by price (lowest first)
-  allPrices.sort((a, b) => a.price - b.price);
+  // Sort by relevance score first, then by price
+  allPrices.sort((a, b) => {
+    // Search links go last
+    if (a.isSearchLink && !b.isSearchLink) return 1;
+    if (!a.isSearchLink && b.isSearchLink) return -1;
+    if (a.isSearchLink && b.isSearchLink) return 0;
+
+    // Sort by relevance score (higher first)
+    const scoreDiff = (b.relevanceScore || 0) - (a.relevanceScore || 0);
+    if (Math.abs(scoreDiff) > 10) return scoreDiff;
+
+    // If similar relevance, sort by price (lower first)
+    return a.price - b.price;
+  });
 
   const priceData = {
     artist,
@@ -69,7 +154,14 @@ export const searchVinylPrices = async (artist, album) => {
  * Falls back to search link if API key is not configured
  */
 const searchGoogleShopping = async (artist, album) => {
-  const cleanQuery = `${artist} ${album} vinilo chile`.trim();
+  // Generate multiple search variants for better coverage
+  const searchVariants = [
+    `${artist} ${album} vinilo`,
+    `${artist} ${album} vinyl lp`,
+    `${artist} ${album} disco vinilo`,
+  ];
+
+  const cleanQuery = searchVariants[0] + ' chile';
   const googleShoppingUrl = `https://www.google.cl/search?q=${encodeURIComponent(cleanQuery)}&tbm=shop`;
 
   // Check if SerpAPI key is configured
@@ -252,20 +344,60 @@ const searchMercadoLibre = async (artist, album) => {
 
     console.log(`  📊 Mercado Libre: API returned ${response.data.results.length} total results`);
 
-    // Filter and format results - Less strict filtering
+    // Filter and format results with better vinyl detection
     const results = response.data.results
       .filter(item => {
-        // Filter out items that are clearly not vinyl records
         const title = item.title.toLowerCase();
-        const isVinyl = title.includes('vinilo') || title.includes('lp') || title.includes('vinyl');
-        const isNotOther = !title.includes('cd') && !title.includes('digital');
+
+        // Must be vinyl-related
+        const isVinyl = title.includes('vinilo') ||
+                       title.includes('vinyl') ||
+                       title.includes(' lp ') ||
+                       title.includes('disco de vinilo') ||
+                       title.includes('disco vinilo');
+
+        // Must NOT be CD, digital, or other formats
+        const isNotOther = !title.includes(' cd ') &&
+                          !title.includes('(cd)') &&
+                          !title.includes('[cd]') &&
+                          !title.includes('cd,') &&
+                          !title.includes('cd-') &&
+                          !title.includes('digital') &&
+                          !title.includes('mp3') &&
+                          !title.includes('cassette') &&
+                          !title.includes('dvd') &&
+                          !title.includes('blu-ray') &&
+                          !title.includes('posters') &&
+                          !title.includes('libro');
+
+        // Filter out accessories (unless the album name contains these words)
+        const normalizedAlbum = normalizeText(album);
+        const isAccessory = (title.includes('aguja') ||
+                           title.includes('capsula') ||
+                           title.includes('tornamesa') ||
+                           title.includes('tocadisco') ||
+                           title.includes('bandeja')) &&
+                          !normalizedAlbum.includes('aguja') &&
+                          !normalizedAlbum.includes('capsula');
 
         if (!isVinyl) {
-          console.log(`    ❌ Filtered out (not vinyl): ${item.title.substring(0, 50)}...`);
+          console.log(`    ⏭️  Not vinyl: ${item.title.substring(0, 60)}`);
+          return false;
         }
 
-        return isVinyl && isNotOther;
+        if (!isNotOther) {
+          console.log(`    ⏭️  Is CD/Digital: ${item.title.substring(0, 60)}`);
+          return false;
+        }
+
+        if (isAccessory) {
+          console.log(`    ⏭️  Is accessory: ${item.title.substring(0, 60)}`);
+          return false;
+        }
+
+        return true;
       })
+      .slice(0, 15) // Limit to top 15 results
       .map(item => ({
         store: 'Mercado Libre',
         title: item.title,
@@ -310,24 +442,188 @@ const searchMercadoLibre = async (artist, album) => {
 };
 
 /**
- * Search Needle store (placeholder for future implementation)
- * Needle doesn't have a public API, would require web scraping
+ * Search Needle Música (Chilean vinyl store)
+ * Uses web scraping of their search results
  */
-const searchNeedle = async (artist, album) => {
-  // TODO: Implement web scraping for Needle store
-  // https://needlemusica.cl
-  console.log('  📍 Needle: Not implemented yet (requires web scraping)');
-  return [];
+const searchNeedleMusica = async (artist, album) => {
+  try {
+    const query = `${artist} ${album}`.trim();
+    const searchUrl = `https://needlemusica.cl/search?q=${encodeURIComponent(query)}`;
+
+    console.log(`  🎵 Searching Needle Música: "${query}"`);
+
+    const response = await axios.get(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'es-CL,es;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://needlemusica.cl/',
+      },
+      timeout: 15000,
+    });
+
+    const $ = cheerio.load(response.data);
+    const results = [];
+
+    // Find product cards in search results
+    $('.product-card, .product-item, .grid-product, .product').each((i, element) => {
+      try {
+        const $product = $(element);
+
+        // Extract product title
+        const title = $product.find('.product-card__title, .product-title, h3, h4, a[href*="/products/"]').first().text().trim();
+
+        // Skip if no title
+        if (!title) return;
+
+        // Check if it's a vinyl
+        const titleLower = title.toLowerCase();
+        const isVinyl = titleLower.includes('vinilo') ||
+                       titleLower.includes('vinyl') ||
+                       titleLower.includes('lp') ||
+                       titleLower.includes('disco');
+
+        if (!isVinyl) return;
+
+        // Extract price
+        let price = null;
+        const priceText = $product.find('.price, .product-price, .money, [class*="price"]').first().text();
+        const priceMatch = priceText.match(/[\d.,]+/);
+        if (priceMatch) {
+          price = Math.round(parseFloat(priceMatch[0].replace(/\./g, '').replace(',', '.')));
+        }
+
+        // Extract URL
+        const relativeUrl = $product.find('a[href*="/products/"]').first().attr('href');
+        const url = relativeUrl ? `https://needlemusica.cl${relativeUrl}` : searchUrl;
+
+        // Extract image
+        const thumbnail = $product.find('img').first().attr('src') || $product.find('img').first().attr('data-src');
+
+        // Only add if has valid price
+        if (price && price > 0) {
+          results.push({
+            store: 'Needle Música',
+            title: title,
+            price: price,
+            currency: 'CLP',
+            condition: 'Nuevo',
+            url: url,
+            thumbnail: thumbnail,
+            shipping: 'Consultar en tienda',
+            available_quantity: 1,
+          });
+        }
+      } catch (err) {
+        console.log(`    ⚠️ Error parsing product:`, err.message);
+      }
+    });
+
+    console.log(`  ✅ Needle Música: Found ${results.length} vinyls`);
+    return results;
+  } catch (error) {
+    console.error('  ❌ Error searching Needle Música:', error.message);
+    return [];
+  }
 };
 
 /**
- * Search Punto Musical (placeholder for future implementation)
- * Would require web scraping or contacting them for API access
+ * Search Discocentro (Chilean vinyl store)
+ * Uses web scraping of their search results
  */
-const searchPuntoMusical = async (artist, album) => {
-  // TODO: Implement web scraping for Punto Musical
-  console.log('  🎵 Punto Musical: Not implemented yet (requires web scraping)');
-  return [];
+const searchDiscocentro = async (artist, album) => {
+  try {
+    const query = `${artist} ${album} vinilo`.trim();
+    const searchUrl = `https://www.discocentro.cl/catalogsearch/result/?q=${encodeURIComponent(query)}`;
+
+    console.log(`  💿 Searching Discocentro: "${query}"`);
+
+    const response = await axios.get(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'es-CL,es;q=0.9,en;q=0.8',
+        'Referer': 'https://www.discocentro.cl/',
+      },
+      timeout: 15000,
+    });
+
+    const $ = cheerio.load(response.data);
+    const results = [];
+
+    // Find product items in search results
+    $('.product-item, .item.product, .product').each((i, element) => {
+      try {
+        const $product = $(element);
+
+        // Extract product title
+        const title = $product.find('.product-item-name, .product-name, h2, h3, a.product-item-link').first().text().trim();
+
+        // Skip if no title
+        if (!title) return;
+
+        // Check if it's a vinyl (Discocentro includes format in title)
+        const titleLower = title.toLowerCase();
+        const isVinyl = titleLower.includes('vinilo') ||
+                       titleLower.includes('vinyl') ||
+                       titleLower.includes('lp') ||
+                       titleLower.includes('180g') ||
+                       titleLower.includes('12"') ||
+                       titleLower.includes('disco');
+
+        // Filter out CDs
+        const isNotCD = !titleLower.includes(' cd ') &&
+                       !titleLower.includes('(cd)') &&
+                       !titleLower.includes('[cd]');
+
+        if (!isVinyl || !isNotCD) return;
+
+        // Extract price
+        let price = null;
+        const priceElement = $product.find('.price, .price-wrapper, [data-price-type="finalPrice"]');
+        const priceText = priceElement.text();
+        const priceMatch = priceText.match(/[\d.,]+/);
+        if (priceMatch) {
+          price = Math.round(parseFloat(priceMatch[0].replace(/\./g, '').replace(',', '.')));
+        }
+
+        // Extract URL
+        const url = $product.find('a.product-item-link, a[href*="/producto/"]').first().attr('href');
+
+        // Extract image
+        const thumbnail = $product.find('img.product-image-photo, img').first().attr('src') ||
+                         $product.find('img').first().attr('data-src');
+
+        // Extract condition (if available)
+        const conditionText = $product.find('.condition, .product-condition').text().toLowerCase();
+        const condition = conditionText.includes('usado') ? 'Usado' : 'Nuevo';
+
+        // Only add if has valid price and URL
+        if (price && price > 0 && url) {
+          results.push({
+            store: 'Discocentro',
+            title: title,
+            price: price,
+            currency: 'CLP',
+            condition: condition,
+            url: url.startsWith('http') ? url : `https://www.discocentro.cl${url}`,
+            thumbnail: thumbnail,
+            shipping: 'Consultar en tienda',
+            available_quantity: 1,
+          });
+        }
+      } catch (err) {
+        console.log(`    ⚠️ Error parsing product:`, err.message);
+      }
+    });
+
+    console.log(`  ✅ Discocentro: Found ${results.length} vinyls`);
+    return results;
+  } catch (error) {
+    console.error('  ❌ Error searching Discocentro:', error.message);
+    return [];
+  }
 };
 
 /**

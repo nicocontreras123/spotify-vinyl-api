@@ -6,6 +6,7 @@ import recommendationRoutes from './routes/recommendationRoutes.js';
 import userAuthRoutes from './routes/userAuthRoutes.js';
 import userVinylRoutes from './routes/userVinylRoutes.js';
 import priceRoutes from './routes/priceRoutes.js';
+import wishlistRoutes from './routes/wishlistRoutes.js';
 import { callback } from './controllers/authController.js';
 import { initializeDatabase } from './config/database.js';
 
@@ -139,6 +140,9 @@ app.use('/api/auth', userAuthRoutes);
 
 // User vinyl management routes
 app.use('/api/user/vinyls', userVinylRoutes);
+
+// Wishlist routes
+app.use('/api/wishlist', wishlistRoutes);
 
 // Price comparison routes
 app.use('/api/prices', priceRoutes);

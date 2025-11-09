@@ -1,5 +1,103 @@
 import { spotifyApi } from '../config/spotify.js';
 
+/**
+ * Check if an album is a compilation, greatest hits, or special edition
+ * These albums are typically not what users want for vinyl recommendations
+ */
+const isCompilationOrSpecialEdition = (album) => {
+  if (!album) return false;
+
+  const albumName = album.name.toLowerCase();
+
+  // Check for explicit album type
+  if (album.album_type === 'compilation') {
+    return true;
+  }
+
+  // Compilation keywords
+  const compilationKeywords = [
+    'greatest hits',
+    'best of',
+    'the best',
+    'very best',
+    'collection',
+    'compilation',
+    'anthology',
+    'essential',
+    'complete',
+    'ultimate',
+    ' hits',
+    'gold',
+    'platinum',
+    'singles collection',
+    'the singles',
+    'essential mix',
+    'top hits',
+    'recopilacion',
+    'lo mejor de',
+    'exitos',
+    'coleccion',
+    'antologia',
+    'obras completas'
+  ];
+
+  // Special/Anniversary edition keywords
+  const specialEditionKeywords = [
+    'anniversary',
+    'aniversario',
+    'deluxe edition',
+    'edicion deluxe',
+    'expanded edition',
+    'edicion ampliada',
+    'special edition',
+    'edicion especial',
+    'collector',
+    'coleccionista',
+    'remaster',
+    'remasterizado',
+    'remastered',
+    'super deluxe',
+    'box set',
+    'expanded',
+    'ampliada',
+    'limited edition',
+    'edicion limitada'
+  ];
+
+  // Check for compilation keywords
+  const hasCompilationKeyword = compilationKeywords.some(keyword =>
+    albumName.includes(keyword)
+  );
+
+  if (hasCompilationKeyword) {
+    return true;
+  }
+
+  // Check for special edition keywords
+  const hasSpecialEditionKeyword = specialEditionKeywords.some(keyword =>
+    albumName.includes(keyword)
+  );
+
+  if (hasSpecialEditionKeyword) {
+    return true;
+  }
+
+  // Check for Various Artists
+  const artistName = album.artists?.[0]?.name?.toLowerCase() || '';
+  if (artistName.includes('various') || artistName.includes('varios')) {
+    return true;
+  }
+
+  // Check for year in parentheses at the end (often reissues/remasters)
+  // Example: "Album Name (2023 Remaster)"
+  const yearPatternAtEnd = /\(\d{4}[^)]*\)$/;
+  if (yearPatternAtEnd.test(albumName)) {
+    return true;
+  }
+
+  return false;
+};
+
 export const getUserTopTracks = async (timeRange = 'medium_term', limit = 50) => {
   try {
     const data = await spotifyApi.getMyTopTracks({
@@ -52,21 +150,31 @@ export const getUserTopArtists = async (timeRange = 'medium_term', limit = 50) =
 
 export const getArtistTopAlbums = async (artistId, limit = 5) => {
   try {
-    // Fetch more albums to account for filtering out singles
-    const fetchLimit = limit * 3; // Fetch 3x more to ensure we have enough after filtering
+    // Fetch more albums to account for filtering
+    const fetchLimit = limit * 5; // Fetch 5x more to ensure we have enough after filtering
     const data = await spotifyApi.getArtistAlbums(artistId, {
       limit: fetchLimit,
-      include_groups: 'album',
+      include_groups: 'album', // Only studio albums, not compilations
       country: 'US'
     });
 
-    // Filter out singles (albums with only 1 track)
+    // Filter out singles, compilations, and special editions
     const filteredAlbums = data.body.items.filter(album => {
       // Filter out singles - they rarely have vinyl versions
-      return album.total_tracks >= 2;
+      if (album.total_tracks < 2) {
+        return false;
+      }
+
+      // Filter out compilations, greatest hits, and special editions
+      if (isCompilationOrSpecialEdition(album)) {
+        console.log(`  ⏭️  Skipping compilation/special edition: ${album.name}`);
+        return false;
+      }
+
+      return true;
     });
 
-    console.log(`🎵 Artist albums: ${data.body.items.length} total, ${filteredAlbums.length} after filtering singles`);
+    console.log(`🎵 Artist albums: ${data.body.items.length} total, ${filteredAlbums.length} after filtering singles/compilations/special editions`);
 
     // Return only the requested limit
     return filteredAlbums.slice(0, limit);
@@ -187,11 +295,27 @@ export const getAlbumDetails = async (albumId) => {
 
 export const searchAlbums = async (query, limit = 20) => {
   try {
-    const data = await spotifyApi.searchAlbums(query, { limit });
+    // Fetch more to account for filtering
+    const fetchLimit = Math.min(limit * 3, 50);
+    const data = await spotifyApi.searchAlbums(query, { limit: fetchLimit });
 
-    // Filter out singles (albums with only 1 track) as they rarely have vinyl versions
+    // Filter out singles, compilations, and special editions
     const albums = data.body.albums.items
-      .filter(album => album.total_tracks >= 2)
+      .filter(album => {
+        // Filter out singles
+        if (album.total_tracks < 2) {
+          return false;
+        }
+
+        // Filter out compilations and special editions
+        if (isCompilationOrSpecialEdition(album)) {
+          console.log(`  ⏭️  Search: Skipping compilation/special edition: ${album.name}`);
+          return false;
+        }
+
+        return true;
+      })
+      .slice(0, limit) // Limit to requested amount after filtering
       .map(album => ({
         id: album.id,
         name: album.name,
@@ -233,11 +357,12 @@ export const getAnalysisData = async (timeRange = 'medium_term') => {
     ]);
 
     // Extract unique albums from top tracks
-    // Filter out singles (albums with only 1 track) as they rarely have vinyl versions
+    // Filter out singles, compilations, and special editions
     const albums = [...new Map(
       topTracks
         .filter(track => track.album)
         .filter(track => track.album.total_tracks >= 2) // Only albums/EPs with 2+ tracks
+        .filter(track => !isCompilationOrSpecialEdition(track.album)) // No compilations or special editions
         .map(track => [track.album.id, {
           id: track.album.id,
           name: track.album.name,
@@ -249,7 +374,7 @@ export const getAnalysisData = async (timeRange = 'medium_term') => {
         }])
     ).values()];
 
-    console.log(`📀 Filtered albums: ${albums.length} (excluded singles with 1 track)`);
+    console.log(`📀 Filtered albums: ${albums.length} (excluded singles, compilations, and special editions)`);
 
     return {
       topTracks: topTracks.map(track => ({

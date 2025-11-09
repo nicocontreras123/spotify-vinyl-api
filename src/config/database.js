@@ -90,12 +90,30 @@ export const initializeDatabase = async () => {
     `);
     console.log('  ✓ User favorites cover_image column added');
 
+    // Create user_wishlist table (albums the user wants to buy)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_wishlist (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        album_id VARCHAR(255) NOT NULL,
+        album_name VARCHAR(255) NOT NULL,
+        artist VARCHAR(255) NOT NULL,
+        cover_image TEXT,
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, album_id)
+      )
+    `);
+    console.log('  ✓ User wishlist table ready');
+
     // Create index for faster queries
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_user_vinyls_user_id ON user_vinyls(user_id)
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_user_favorites_user_id ON user_favorites(user_id)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_wishlist_user_id ON user_wishlist(user_id)
     `);
     console.log('  ✓ Indexes created');
 
