@@ -1,4 +1,4 @@
-import { getRelatedArtists, getArtistTopAlbums } from './spotifyService.js';
+import { getRelatedArtists, getArtistTopAlbums, searchAlbums } from './spotifyService.js';
 import { getSimilarArtistsFromLastfm, getArtistTopAlbumsFromLastfm } from './lastfmService.js';
 import { getUserAlbumStatus } from './userVinylService.js';
 
@@ -103,29 +103,49 @@ export const generateDiscoveryRecommendations = async (analysisData, userId = nu
       }
 
       // Process albums and return recommendations for this artist
-      return albums
-        .filter(album => {
-          // Create name-based lookup key
-          const albumKey = `${album.name.toLowerCase()}|${artist.name.toLowerCase()}`;
+      const filteredAlbums = albums.filter(album => {
+        // Create name-based lookup key
+        const albumKey = `${album.name.toLowerCase()}|${artist.name.toLowerCase()}`;
 
-          // Skip if user already owns this album (by ID or name)
-          if (album.id && ownedAlbums.has(album.id)) {
-            console.log(`  ⏭️  Skipping owned album (by ID): ${artist.name} - ${album.name}`);
-            return false;
-          }
-          if (ownedAlbumNames.has(albumKey)) {
-            console.log(`  ⏭️  Skipping owned album (by name): ${artist.name} - ${album.name}`);
-            return false;
+        // Skip if user already owns this album (by ID or name)
+        if (album.id && ownedAlbums.has(album.id)) {
+          console.log(`  ⏭️  Skipping owned album (by ID): ${artist.name} - ${album.name}`);
+          return false;
+        }
+        if (ownedAlbumNames.has(albumKey)) {
+          console.log(`  ⏭️  Skipping owned album (by name): ${artist.name} - ${album.name}`);
+          return false;
+        }
+
+        // Skip if already in user's top albums (from main recommendations)
+        if (userAlbumNames.has(album.name.toLowerCase())) {
+          console.log(`  ⏭️  Skipping album from main recommendations: ${album.name}`);
+          return false;
+        }
+        return true;
+      });
+
+      // For albums from Last.fm, try to find Spotify ID
+      const albumsWithSpotifyId = await Promise.all(
+        filteredAlbums.map(async (album) => {
+          let albumId = album.id;
+
+          // If album doesn't have Spotify ID (came from Last.fm), search for it
+          if (!albumId) {
+            try {
+              console.log(`  🔍 Searching Spotify for: ${artist.name} - ${album.name}`);
+              const searchResults = await searchAlbums(`${artist.name} ${album.name}`, 1);
+              if (searchResults && searchResults.length > 0) {
+                albumId = searchResults[0].id;
+                console.log(`  ✅ Found Spotify ID: ${albumId}`);
+              } else {
+                console.log(`  ⚠️  No Spotify ID found for: ${album.name}`);
+              }
+            } catch (error) {
+              console.log(`  ❌ Error searching Spotify for ${album.name}:`, error.message);
+            }
           }
 
-          // Skip if already in user's top albums (from main recommendations)
-          if (userAlbumNames.has(album.name.toLowerCase())) {
-            console.log(`  ⏭️  Skipping album from main recommendations: ${album.name}`);
-            return false;
-          }
-          return true;
-        })
-        .map(album => {
           // Calculate album relevance score
           const baseScore = artist.relevanceScore || 1;
           const similarityBonus = (artist.similarity || 0) * 5;
@@ -133,13 +153,8 @@ export const generateDiscoveryRecommendations = async (analysisData, userId = nu
 
           let albumRelevanceScore = baseScore + similarityBonus + popularityBonus;
 
-          // BONUS: If album is in user's favorites, give significant boost
-          if (album.id && favoriteAlbums.has(album.id)) {
-            albumRelevanceScore += 1000; // High priority for favorites
-          }
-
           return {
-            albumId: album.id || null,
+            albumId: albumId || null,
             albumName: album.name,
             artist: artist.name,
             artistId: artist.id || artist.artistId || null,
@@ -154,10 +169,13 @@ export const generateDiscoveryRecommendations = async (analysisData, userId = nu
             isFromUserArtist: false, // Always false now since we exclude user's artists
             discovery: true,
             type: 'album_discovery',
-            source: artist.id ? 'spotify' : 'lastfm',
+            source: albumId ? 'spotify' : 'lastfm',
             totalTracks: album.total_tracks || album.trackCount || null
           };
-        });
+        })
+      );
+
+      return albumsWithSpotifyId;
     } catch (error) {
       console.error(`Error fetching albums for ${artist.name}:`, error.message);
       return [];
