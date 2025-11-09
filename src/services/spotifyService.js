@@ -183,7 +183,8 @@ export const getAlbumDetails = async (albumId) => {
       artists: album.artists.map(artist => ({
         id: artist.id,
         name: artist.name,
-        uri: artist.uri
+        uri: artist.uri,
+        externalUrls: artist.external_urls
       })),
       releaseDate: album.release_date,
       totalTracks: album.total_tracks,
@@ -192,12 +193,20 @@ export const getAlbumDetails = async (albumId) => {
       popularity: album.popularity,
       uri: album.uri,
       externalUrls: album.external_urls,
-      // Add direct Spotify links for playback
+      // Playback information for web applications
+      playback: {
+        spotifyUri: album.uri, // Use with Spotify Web Playback SDK
+        webPlayerUrl: album.external_urls?.spotify || `https://open.spotify.com/album/${album.id}`,
+        embedUrl: `https://open.spotify.com/embed/album/${album.id}`, // For iframe embedding
+        canEmbed: true
+      },
+      // Legacy fields (kept for backwards compatibility)
       spotifyWebUrl: album.external_urls?.spotify || null,
-      spotifyAppUrl: `spotify:album:${album.id}`, // URI that opens in Spotify app and plays the album
+      spotifyAppUrl: `spotify:album:${album.id}`,
       playLink: album.external_urls?.spotify || null,
       label: album.label,
       copyrights: album.copyrights,
+      availableMarkets: album.available_markets || [],
       tracks: tracks.map(track => ({
         id: track.id,
         name: track.name,
@@ -206,12 +215,26 @@ export const getAlbumDetails = async (albumId) => {
         explicit: track.explicit,
         uri: track.uri,
         previewUrl: track.preview_url,
+        hasPreview: !!track.preview_url,
+        // Enhanced playback information for each track
+        playback: {
+          spotifyUri: track.uri, // Use with Spotify Web Playback SDK: spotify:track:xxxxx
+          webPlayerUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`,
+          embedUrl: `https://open.spotify.com/embed/track/${track.id}`, // For iframe embedding
+          previewUrl: track.preview_url, // 30-second preview (if available)
+          canEmbed: true
+        },
+        // Legacy fields (kept for backwards compatibility)
         spotifyWebUrl: track.external_urls?.spotify || null,
         spotifyAppUrl: `spotify:track:${track.id}`,
+        availableMarkets: track.available_markets || [],
+        isPlayable: track.is_playable !== false, // Default to true if not specified
+        restrictions: track.restrictions || null,
         artists: track.artists.map(artist => ({
           id: artist.id,
           name: artist.name,
-          uri: artist.uri
+          uri: artist.uri,
+          externalUrls: artist.external_urls
         }))
       }))
     };

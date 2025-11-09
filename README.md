@@ -145,6 +145,73 @@ Obtiene el análisis completo de tu música.
 }
 ```
 
+#### `GET /api/album/:id`
+Obtiene información detallada de un álbum específico, incluyendo toda la información necesaria para reproducción web.
+
+**Parámetros:**
+- `id`: ID del álbum de Spotify
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "album_id",
+    "name": "Album Name",
+    "artists": [
+      {
+        "id": "artist_id",
+        "name": "Artist Name",
+        "uri": "spotify:artist:xxxxx",
+        "externalUrls": { "spotify": "https://..." }
+      }
+    ],
+    "releaseDate": "2020-01-01",
+    "totalTracks": 12,
+    "images": [{ "url": "...", "height": 640, "width": 640 }],
+    "genres": ["rock", "indie"],
+    "popularity": 75,
+    "uri": "spotify:album:xxxxx",
+    "playback": {
+      "spotifyUri": "spotify:album:xxxxx",
+      "webPlayerUrl": "https://open.spotify.com/album/xxxxx",
+      "embedUrl": "https://open.spotify.com/embed/album/xxxxx",
+      "canEmbed": true
+    },
+    "availableMarkets": ["US", "CL", ...],
+    "tracks": [
+      {
+        "id": "track_id",
+        "name": "Track Name",
+        "track_number": 1,
+        "durationMs": 240000,
+        "explicit": false,
+        "uri": "spotify:track:xxxxx",
+        "hasPreview": true,
+        "playback": {
+          "spotifyUri": "spotify:track:xxxxx",
+          "webPlayerUrl": "https://open.spotify.com/track/xxxxx",
+          "embedUrl": "https://open.spotify.com/embed/track/xxxxx",
+          "previewUrl": "https://p.scdn.co/mp3-preview/...",
+          "canEmbed": true
+        },
+        "isPlayable": true,
+        "restrictions": null,
+        "artists": [...]
+      }
+    ]
+  }
+}
+```
+
+**Notas sobre reproducción web:**
+- `playback.spotifyUri`: Usar con el [Spotify Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk) para reproducción completa
+- `playback.webPlayerUrl`: URL directa para abrir en Spotify Web Player
+- `playback.embedUrl`: URL para incrustar con iframe (requiere autenticación del usuario)
+- `playback.previewUrl`: URL directa de audio MP3 para preview de 30 segundos (sin autenticación requerida)
+- `hasPreview`: Indica si la canción tiene preview disponible
+- `isPlayable`: Indica si la canción se puede reproducir en el mercado actual
+
 #### `GET /api/vinyl-recommendations`
 Obtiene 20 recomendaciones de vinilos personalizadas.
 

@@ -11,6 +11,12 @@ import { initializeDatabase } from './config/database.js';
 
 dotenv.config();
 
+// Debug: Check SerpAPI configuration
+console.log('🔍 SerpAPI Debug:');
+console.log('  - Key exists:', !!process.env.SERPAPI_KEY);
+console.log('  - Key length:', process.env.SERPAPI_KEY?.length || 0);
+console.log('  - Key preview:', process.env.SERPAPI_KEY?.substring(0, 10) + '...' || 'NOT SET');
+
 // Initialize database
 (async () => {
   try {
