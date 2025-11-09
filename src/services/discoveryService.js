@@ -1,10 +1,6 @@
 import { getRelatedArtists, getArtistTopAlbums } from './spotifyService.js';
 import { getSimilarArtistsFromLastfm, getArtistTopAlbumsFromLastfm } from './lastfmService.js';
-import * as cacheService from './cacheService.js';
 import { getUserAlbumStatus } from './userVinylService.js';
-
-// Cache TTL for discovery data: 12 hours (43200 seconds)
-const DISCOVERY_CACHE_TTL = 12 * 60 * 60;
 
 // Use Last.fm as primary source for similar artists (Spotify recommendations deprecated)
 const USE_LASTFM = true;

@@ -1,6 +1,5 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
-import * as cacheService from './cacheService.js';
 
 dotenv.config();
 
@@ -9,7 +8,6 @@ const LASTFM_API_KEY = process.env.LASTFM_API_KEY || null;
 const LASTFM_SHARED_SECRET = process.env.LASTFM_SHARED_SECRET || null;
 
 // Cache TTL for Last.fm data: 24 hours (86400 seconds)
-const LASTFM_CACHE_TTL = 24 * 60 * 60;
 
 // Log configuration status
 if (LASTFM_API_KEY) {
@@ -65,13 +63,8 @@ export const getCredentialsStatus = () => {
  * @returns {Array} Array of similar artists
  */
 export const getSimilarArtistsFromLastfm = async (seedArtists) => {
-  const cacheKey = cacheService.generateKey('similar_artists_lastfm', 'lastfm');
   
   // Try to get from cache
-  const cachedData = cacheService.get(cacheKey);
-  if (cachedData) {
-    return cachedData;
-  }
 
   const similarArtistsMap = new Map();
   const userArtistNames = new Set(seedArtists.map(a => a.name.toLowerCase()));
@@ -139,7 +132,6 @@ export const getSimilarArtistsFromLastfm = async (seedArtists) => {
 
   console.log(`✅ Found ${similarArtists.length} similar artists from Last.fm`);
 
-  cacheService.set(cacheKey, similarArtists, LASTFM_CACHE_TTL);
   return similarArtists;
 };
 
@@ -150,13 +142,8 @@ export const getSimilarArtistsFromLastfm = async (seedArtists) => {
  * @returns {Array} Array of albums
  */
 export const getArtistTopAlbumsFromLastfm = async (artistName, limit = 5) => {
-  const cacheKey = cacheService.generateKey(`artist_albums_lastfm:${artistName}:${limit}`, 'lastfm');
 
   // Try to get from cache
-  const cachedData = cacheService.get(cacheKey);
-  if (cachedData) {
-    return cachedData;
-  }
 
   try {
     const data = await makeLastfmRequest({
@@ -230,7 +217,6 @@ export const getArtistTopAlbumsFromLastfm = async (artistName, limit = 5) => {
 
       console.log(`📀 Last.fm albums for ${artistName}: ${albums.length} total, ${albumsWithDetails.length} after filtering singles`);
 
-      cacheService.set(cacheKey, albumsWithDetails, LASTFM_CACHE_TTL);
       return albumsWithDetails;
     }
 
@@ -247,13 +233,8 @@ export const getArtistTopAlbumsFromLastfm = async (artistName, limit = 5) => {
  * @returns {Object} Artist information
  */
 export const getArtistInfoFromLastfm = async (artistName) => {
-  const cacheKey = cacheService.generateKey(`artist_info_lastfm:${artistName}`, 'lastfm');
   
   // Try to get from cache
-  const cachedData = cacheService.get(cacheKey);
-  if (cachedData) {
-    return cachedData;
-  }
 
   try {
     const data = await makeLastfmRequest({
@@ -282,7 +263,6 @@ export const getArtistInfoFromLastfm = async (artistName) => {
           : []
       };
 
-      cacheService.set(cacheKey, result, LASTFM_CACHE_TTL);
       return result;
     }
 
@@ -299,13 +279,8 @@ export const getArtistInfoFromLastfm = async (artistName) => {
  * @returns {Array} Array of tags/genres
  */
 export const getArtistTagsFromLastfm = async (artistName) => {
-  const cacheKey = cacheService.generateKey(`artist_tags_lastfm:${artistName}`, 'lastfm');
   
   // Try to get from cache
-  const cachedData = cacheService.get(cacheKey);
-  if (cachedData) {
-    return cachedData;
-  }
 
   try {
     const data = await makeLastfmRequest({
@@ -327,7 +302,6 @@ export const getArtistTagsFromLastfm = async (artistName) => {
       }));
     }
 
-    cacheService.set(cacheKey, tags, LASTFM_CACHE_TTL);
     return tags;
   } catch (error) {
     console.error(`Error fetching tags for ${artistName}:`, error.message);
@@ -342,13 +316,8 @@ export const getArtistTagsFromLastfm = async (artistName) => {
  * @returns {Object} Album information
  */
 export const searchAlbumLastfm = async (artist, album) => {
-  const cacheKey = cacheService.generateKey(`album_search_lastfm:${artist}:${album}`, 'lastfm');
   
   // Try to get from cache
-  const cachedData = cacheService.get(cacheKey);
-  if (cachedData) {
-    return cachedData;
-  }
 
   try {
     const data = await makeLastfmRequest({
@@ -376,7 +345,6 @@ export const searchAlbumLastfm = async (artist, album) => {
         wiki: album.wiki?.summary || null
       };
 
-      cacheService.set(cacheKey, result, LASTFM_CACHE_TTL);
       return result;
     }
 

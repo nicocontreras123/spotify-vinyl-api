@@ -1,10 +1,6 @@
 import { getArtistTopAlbums } from './spotifyService.js';
 import { searchVinylPrice } from './discogsService.js';
-import * as cacheService from './cacheService.js';
 import { getUserAlbumStatus } from './userVinylService.js';
-
-// Cache TTL for vinyl recommendations: 12 hours (43200 seconds)
-const VINYL_CACHE_TTL = 12 * 60 * 60;
 
 /**
  * Analyzes user's Spotify listening data and recommends vinyl records to purchase

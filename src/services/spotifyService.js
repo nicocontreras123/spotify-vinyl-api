@@ -1,27 +1,13 @@
 import { spotifyApi } from '../config/spotify.js';
-import * as cacheService from './cacheService.js';
-
-// Cache TTL for Spotify data: 6 hours (21600 seconds)
-const SPOTIFY_CACHE_TTL = 6 * 60 * 60;
 
 export const getUserTopTracks = async (timeRange = 'medium_term', limit = 50) => {
   try {
-    const cacheKey = cacheService.generateKey(`top_tracks:${timeRange}:${limit}`, 'spotify');
-    
-    // Try to get from cache
-    const cachedData = cacheService.get(cacheKey);
-    if (cachedData) {
-      return cachedData;
-    }
-
     const data = await spotifyApi.getMyTopTracks({
       time_range: timeRange,
       limit: limit
     });
-    
-    const tracks = data.body.items;
-    cacheService.set(cacheKey, tracks, SPOTIFY_CACHE_TTL);
-    return tracks;
+
+    return data.body.items;
   } catch (error) {
     console.error('Error fetching top tracks:', error);
 
@@ -41,22 +27,12 @@ export const getUserTopTracks = async (timeRange = 'medium_term', limit = 50) =>
 
 export const getUserTopArtists = async (timeRange = 'medium_term', limit = 50) => {
   try {
-    const cacheKey = cacheService.generateKey(`top_artists:${timeRange}:${limit}`, 'spotify');
-    
-    // Try to get from cache
-    const cachedData = cacheService.get(cacheKey);
-    if (cachedData) {
-      return cachedData;
-    }
-
     const data = await spotifyApi.getMyTopArtists({
       time_range: timeRange,
       limit: limit
     });
-    
-    const artists = data.body.items;
-    cacheService.set(cacheKey, artists, SPOTIFY_CACHE_TTL);
-    return artists;
+
+    return data.body.items;
   } catch (error) {
     console.error('Error fetching top artists:', error);
 
@@ -76,14 +52,6 @@ export const getUserTopArtists = async (timeRange = 'medium_term', limit = 50) =
 
 export const getArtistTopAlbums = async (artistId, limit = 5) => {
   try {
-    const cacheKey = cacheService.generateKey(`artist_albums:${artistId}:${limit}`, 'spotify');
-    
-    // Try to get from cache
-    const cachedData = cacheService.get(cacheKey);
-    if (cachedData) {
-      return cachedData;
-    }
-
     // Fetch more albums to account for filtering out singles
     const fetchLimit = limit * 3; // Fetch 3x more to ensure we have enough after filtering
     const data = await spotifyApi.getArtistAlbums(artistId, {
@@ -101,9 +69,7 @@ export const getArtistTopAlbums = async (artistId, limit = 5) => {
     console.log(`🎵 Artist albums: ${data.body.items.length} total, ${filteredAlbums.length} after filtering singles`);
 
     // Return only the requested limit
-    const result = filteredAlbums.slice(0, limit);
-    cacheService.set(cacheKey, result, SPOTIFY_CACHE_TTL);
-    return result;
+    return filteredAlbums.slice(0, limit);
   } catch (error) {
     console.error('Error fetching artist albums:', error);
     const errorMessage = error.body?.error?.message || error.message || JSON.stringify(error);
@@ -116,18 +82,8 @@ export const getArtistTopAlbums = async (artistId, limit = 5) => {
  */
 export const getRelatedArtists = async (artistId) => {
   try {
-    const cacheKey = cacheService.generateKey(`related_artists:${artistId}`, 'spotify');
-    
-    // Try to get from cache
-    const cachedData = cacheService.get(cacheKey);
-    if (cachedData) {
-      return cachedData;
-    }
-
     const data = await spotifyApi.getArtistRelatedArtists(artistId);
-    const artists = data.body.artists;
-    cacheService.set(cacheKey, artists, SPOTIFY_CACHE_TTL);
-    return artists;
+    return data.body.artists;
   } catch (error) {
     console.error('Error fetching related artists:', error);
     const errorMessage = error.body?.error?.message || error.message || JSON.stringify(error);
@@ -140,18 +96,8 @@ export const getRelatedArtists = async (artistId) => {
  */
 export const getArtist = async (artistId) => {
   try {
-    const cacheKey = cacheService.generateKey(`artist:${artistId}`, 'spotify');
-    
-    // Try to get from cache
-    const cachedData = cacheService.get(cacheKey);
-    if (cachedData) {
-      return cachedData;
-    }
-
     const data = await spotifyApi.getArtist(artistId);
-    const artist = data.body;
-    cacheService.set(cacheKey, artist, SPOTIFY_CACHE_TTL);
-    return artist;
+    return data.body;
   } catch (error) {
     console.error('Error fetching artist:', error);
     const errorMessage = error.body?.error?.message || error.message || JSON.stringify(error);
@@ -161,14 +107,6 @@ export const getArtist = async (artistId) => {
 
 export const getAlbumDetails = async (albumId) => {
   try {
-    const cacheKey = cacheService.generateKey(`album:${albumId}`, 'spotify');
-    
-    // Try to get from cache
-    const cachedData = cacheService.get(cacheKey);
-    if (cachedData) {
-      return cachedData;
-    }
-
     const [albumData, tracksData] = await Promise.all([
       spotifyApi.getAlbum(albumId),
       spotifyApi.getAlbumTracks(albumId, { limit: 50 })
@@ -238,8 +176,7 @@ export const getAlbumDetails = async (albumId) => {
         }))
       }))
     };
-    
-    cacheService.set(cacheKey, result, SPOTIFY_CACHE_TTL);
+
     return result;
   } catch (error) {
     console.error('Error fetching album details:', error);
@@ -250,14 +187,6 @@ export const getAlbumDetails = async (albumId) => {
 
 export const searchAlbums = async (query, limit = 20) => {
   try {
-    const cacheKey = cacheService.generateKey(`search_albums:${query}:${limit}`, 'spotify');
-
-    // Try to get from cache
-    const cachedData = cacheService.get(cacheKey);
-    if (cachedData) {
-      return cachedData;
-    }
-
     const data = await spotifyApi.searchAlbums(query, { limit });
 
     // Filter out singles (albums with only 1 track) as they rarely have vinyl versions
@@ -278,7 +207,6 @@ export const searchAlbums = async (query, limit = 20) => {
         uri: album.uri
       }));
 
-    cacheService.set(cacheKey, albums, SPOTIFY_CACHE_TTL);
     return albums;
   } catch (error) {
     console.error('Error searching albums:', error);
@@ -299,14 +227,6 @@ export const searchAlbums = async (query, limit = 20) => {
 
 export const getAnalysisData = async (timeRange = 'medium_term') => {
   try {
-    const cacheKey = cacheService.generateKey(`analysis:${timeRange}`, 'spotify');
-
-    // Try to get from cache
-    const cachedData = cacheService.get(cacheKey);
-    if (cachedData) {
-      return cachedData;
-    }
-
     const [topTracks, topArtists] = await Promise.all([
       getUserTopTracks(timeRange, 50),
       getUserTopArtists(timeRange, 50)
@@ -331,7 +251,7 @@ export const getAnalysisData = async (timeRange = 'medium_term') => {
 
     console.log(`📀 Filtered albums: ${albums.length} (excluded singles with 1 track)`);
 
-    const result = {
+    return {
       topTracks: topTracks.map(track => ({
         id: track.id,
         name: track.name,
@@ -348,9 +268,6 @@ export const getAnalysisData = async (timeRange = 'medium_term') => {
       })),
       topAlbums: albums
     };
-
-    cacheService.set(cacheKey, result, SPOTIFY_CACHE_TTL);
-    return result;
   } catch (error) {
     console.error('Error fetching analysis data:', error);
 
